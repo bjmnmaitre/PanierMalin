@@ -1,6 +1,8 @@
 {
   "expo": {
     "name": "PanierMalin",
+    "scheme": "panier-malin",
+"plugins": ["expo-router"],
     "slug": "PanierMalin",
     "version": "1.0.0",
     "orientation": "portrait",

@@ -1,0 +1,776 @@
+// services/api.ts
+//
+// RÈGLE D'ARCHITECTURE : les écrans n'appellent JAMAIS supabase directement.
+// Ils appellent toujours une fonction d'ici. Pour brancher le vrai backend,
+// on modifie UNIQUEMENT ce fichier — aucun écran n'a besoin de changer.
+
+import { supabase } from '../lib/supabase'; // RESTAURATION : Ton chemin d'origine exact
+import {
+  Product,
+  ProductWithOffers,
+  ProductPrice,
+  ShoppingList,
+  ListItem,
+  SavedBasketData,
+  OptimizationResult,
+  CommunityActivityItem,
+  LeaderboardEntry,
+  UserProfile,
+  EventData,
+} from './types';
+
+// Flags par domaine — Tous désactivés pour basculer sur le vrai Supabase !
+const USE_MOCK_PRODUCTS = false;     
+const USE_MOCK_PROFILE = false;      
+const USE_MOCK_LISTS = false;        
+const USE_MOCK_BASKETS = false;      
+const USE_MOCK_OPTIMIZE = false;     
+const USE_MOCK_FEED = false;         
+const USE_MOCK_LEADERBOARD = false;  
+const USE_MOCK_EVENTS = false;       
+const USE_MOCK_PRICE_ACTIONS = false;
+
+// ============================================================
+// FONCTIONS INJECTÉES POUR LES NOUVEAUX ÉCRANS (OPTIMIZE & SHOPPING)
+// ============================================================
+
+/**
+ * Récupère les données d'optimisation pour une liste donnée.
+ * Intègre le fallback sur la fonction native 'optimizeBasket' déjà présente.
+ */
+export async function fetchOptimizationData(listId: string): Promise<OptimizationResult> {
+  console.log(`[API] Appel fetchOptimizationData pour la liste : ${listId}`);
+  // On réutilise la puissance de ton algorithme d'optimisation natif déjà écrit plus bas
+  return optimizeBasket(listId);
+}
+
+/**
+ * Enregistre ou met à jour le prix signalé par un utilisateur en rayon (Crowdsourcing)
+ * Insère la contribution et l'activité communautaire associée.
+ */
+export async function updateCrowdsourcedPrice(
+  productId: string,
+  storeId: string,
+  newPrice: number
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  console.log(`[API] Signalement prix Waze-like - Produit: ${productId}, Prix: ${newPrice}`);
+
+  const { error } = await supabase
+    .from('prices')
+    .insert([{
+      product_id: productId,
+      store_id: storeId,
+      price: newPrice,
+      scanned_by: user.id,
+      source: 'user',
+      is_verified: false
+    }]);
+
+  if (error) throw error;
+
+  await supabase.from('community_activity').insert([{
+    user_id: user.id,
+    type: 'price_reported',
+    message: `a signalé un nouveau prix à ${newPrice}€ via le mode course`,
+    related_product_id: productId
+  }]);
+}
+
+// ============================================================
+// PRODUITS & PRIX
+// ============================================================
+
+export async function getProductByEan(ean: string): Promise<ProductWithOffers | null> {
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .select('*')
+    .eq('ean', ean)
+    .single();
+
+  if (productError || !product) return null;
+
+  const { data: prices, error: pricesError } = await supabase
+    .from('prices')
+    .select('*, stores(id, name, chain, logo_uri)')
+    .eq('product_id', product.id)
+    .order('price', { ascending: true });
+
+  if (pricesError) throw pricesError;
+
+  return {
+    id: product.id,
+    ean: product.ean,
+    name: product.name,
+    brand: product.brand,
+    category: product.category,
+    nutriscore: product.nutriscore as any, // Sécurité TypeScript pour l'enum Nutriscore
+    imageUrl: product.image_url,
+    offers: (prices ?? []).map((p: any) => ({
+      id: p.store_id,
+      storeId: p.store_id,
+      storeName: p.stores?.name ?? 'Magasin inconnu',
+      chain: (p.stores?.chain ?? 'leclerc') as any, // Sécurité TypeScript pour l'enum StoreChain
+      logoUri: p.stores?.logo_uri ?? '',
+      distanceKm: 0,
+      price: Number(p.price),
+      verifiedAt: p.verified_at || new Date().toISOString(),
+      proofImageUri: p.proof_image_url,
+      isVerified: p.is_verified,
+    })),
+  };
+}
+
+export async function getProductPrices(productId: string): Promise<ProductPrice[]> {
+  const { data, error } = await supabase
+    .from('best_prices_per_product')
+    .select('*')
+    .eq('product_id', productId);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    productId: row.product_id,
+    storeId: row.store_id,
+    price: Number(row.price),
+    proofImageUrl: row.proof_image_url,
+    isVerified: row.is_verified,
+    verifiedAt: row.verified_at,
+    storeName: row.store_name,
+    chain: row.chain,
+    logoUri: row.logo_uri,
+    lat: row.lat !== null ? Number(row.lat) : null,
+    lng: row.lng !== null ? Number(row.lng) : null,
+  }));
+}
+
+export async function searchProducts(query: string): Promise<Product[]> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .or(`name.ilike.%${query}%,brand.ilike.%${query}%`);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    ean: row.ean,
+    name: row.name,
+    brand: row.brand,
+    category: row.category,
+    nutriscore: row.nutriscore as any, // Sécurité TypeScript
+    imageUrl: row.image_url,
+  }));
+}
+
+export async function confirmPriceWithPhoto(
+  productId: string,
+  storeId: string,
+  photoUri: string
+): Promise<{ pointsEarned: number; isFirstToday: boolean }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { error: priceError } = await supabase
+    .from('prices')
+    .insert([{
+      product_id: productId,
+      store_id: storeId,
+      price: 0, 
+      scanned_by: user.id,
+      proof_image_url: photoUri,
+      source: 'user',
+      is_verified: true
+    }]);
+
+  if (priceError) throw priceError;
+
+  await supabase.from('community_activity').insert([{
+    user_id: user.id,
+    type: 'price_confirmed',
+    message: 'a confirmé un prix en magasin',
+    related_product_id: productId,
+    proof_image_url: photoUri
+  }]);
+
+  return { pointsEarned: 20, isFirstToday: true };
+}
+
+export async function reportDifferentPrice(
+  productId: string,
+  storeId: string,
+  reportedPrice: number
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { error } = await supabase
+    .from('prices')
+    .insert([{
+      product_id: productId,
+      store_id: storeId,
+      price: reportedPrice,
+      scanned_by: user.id,
+      source: 'user',
+      is_verified: false
+    }]);
+
+  if (error) throw error;
+
+  await supabase.from('community_activity').insert([{
+    user_id: user.id,
+    type: 'price_reported',
+    message: `a signalé un nouveau prix à ${reportedPrice}€`,
+    related_product_id: productId
+  }]);
+}
+
+// ============================================================
+// LISTES DE COURSES
+// ============================================================
+
+export async function getMyLists(): Promise<ShoppingList[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { data: sharedBaskets, error: sharedError } = await supabase
+    .from('list_collaborators')
+    .select('list_id')
+    .eq('user_id', user.id);
+
+  if (sharedError) throw sharedError;
+  const sharedIds = (sharedBaskets ?? []).map((b: any) => b.list_id);
+
+  const { data: lists, error: listsError } = await supabase
+    .from('shopping_lists')
+    .select('*')
+    .or(`user_id.eq.${user.id},id.in.(${sharedIds.length > 0 ? sharedIds.join(',') : '00000000-0000-0000-0000-000000000000'})`)
+    .eq('is_archived', false);
+
+  if (listsError) throw listsError;
+  if (!lists || lists.length === 0) return [];
+
+  const listIds = lists.map((l: any) => l.id);
+
+  const { data: items, error: itemsError } = await supabase
+    .from('list_items')
+    .select('list_id, qty, checked, price')
+    .in('list_id', listIds);
+
+  if (itemsError) throw itemsError;
+
+  const { data: collaborators, error: collabError } = await supabase
+    .from('list_collaborators')
+    .select('list_id, user_id, users_profiles(avatar_url)')
+    .in('list_id', listIds);
+
+  if (collabError) throw collabError;
+
+  return lists.map((list: any) => {
+    const listItems = (items ?? []).filter((it: any) => it.list_id === list.id);
+    const itemCount = listItems.length;
+    const doneCount = listItems.filter((it: any) => it.checked).length;
+    const estimatedTotal = listItems.reduce(
+      (sum: number, it: any) => sum + (Number(it.price) || 0) * Number(it.qty),
+      0
+    );
+
+    const listCollabs = (collaborators ?? []).filter((c: any) => c.list_id === list.id);
+    const collaboratorAvatars: string[] = listCollabs
+      .map((c: any) => c.users_profiles?.avatar_url)
+      .filter((url): url is string => typeof url === 'string');
+
+    return {
+      id: list.id,
+      name: list.name,
+      itemCount,
+      doneCount,
+      estimatedTotal,
+      isShared: list.is_shared || listCollabs.length > 0,
+      isArchived: list.is_archived,
+      collaboratorAvatars,
+    };
+  });
+}
+
+export async function createShoppingList(name: string): Promise<ShoppingList> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { data, error } = await supabase
+    .from('shopping_lists')
+    .insert([{ name, user_id: user.id, is_archived: false, is_shared: false }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    name: data.name,
+    itemCount: 0,
+    doneCount: 0,
+    estimatedTotal: 0,
+    isShared: data.is_shared,
+    isArchived: data.is_archived,
+    collaboratorAvatars: [],
+  };
+}
+
+export async function getListItems(listId: string): Promise<ListItem[]> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .select('*, products(name, brand, image_url)')
+    .eq('list_id', listId);
+
+  if (error) throw error;
+
+  return (data ?? []).map((item: any) => ({
+    id: item.id,
+    listId: item.list_id,
+    productId: item.product_id,
+    customName: item.custom_name ?? item.products?.name ?? null,
+    brand: item.products?.brand,
+    imageUrl: item.products?.image_url,
+    qty: Number(item.qty),
+    checked: item.checked,
+    price: item.price !== null ? Number(item.price) : undefined,
+  }));
+}
+
+export async function addListItem(listId: string, customName: string, qty: number = 1): Promise<ListItem> {
+  const { data, error } = await supabase
+    .from('list_items')
+    .insert([{ list_id: listId, custom_name: customName, qty, checked: false }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    listId: data.list_id,
+    productId: data.product_id,
+    customName: data.custom_name,
+    qty: Number(data.qty),
+    checked: data.checked,
+    price: data.price !== null ? Number(data.price) : undefined,
+  };
+}
+
+export async function toggleItemChecked(itemId: string, currentStatus: boolean): Promise<boolean> {
+  const nextStatus = !currentStatus;
+  const { error } = await supabase
+    .from('list_items')
+    .update({ checked: nextStatus })
+    .eq('id', itemId);
+
+  if (error) throw error;
+  return nextStatus;
+}
+
+export async function deleteListItem(itemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('list_items')
+    .delete()
+    .eq('id', itemId);
+
+  if (error) throw error;
+}
+
+// ============================================================
+// PANIERS HABITUELS
+// ============================================================
+
+export async function getSavedBaskets(): Promise<SavedBasketData[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { data: baskets, error: basketError } = await supabase
+    .from('saved_baskets')
+    .select('*')
+    .eq('user_id', user.id);
+
+  if (basketError) throw basketError;
+
+  const basketIds = baskets.map((b: any) => b.id);
+
+  const { data: items, error: itemsError } = await supabase
+    .from('saved_basket_items')
+    .select('basket_id, qty')
+    .in('basket_id', basketIds.length > 0 ? basketIds : ['00000000-0000-0000-0000-000000000000']);
+
+  if (itemsError) throw itemsError;
+
+  const { data: collaborators, error: collabError } = await supabase
+    .from('basket_collaborators')
+    .select('basket_id, user_id')
+    .in('basket_id', basketIds.length > 0 ? basketIds : ['00000000-0000-0000-0000-000000000000']);
+
+  if (collabError) throw collabError;
+
+  return baskets.map((b: any) => {
+    const basketItems = (items ?? []).filter((it: any) => it.basket_id === b.id);
+    const basketCollabs = (collaborators ?? []).filter((c: any) => c.basket_id === b.id);
+
+    return {
+      id: b.id,
+      name: b.name,
+      itemCount: basketItems.reduce((sum: number, it: any) => sum + Number(it.qty), 0),
+      icon: b.icon,
+      isShared: basketCollabs.length > 0,
+      collaboratorCount: basketCollabs.length + 1
+    };
+  });
+}
+
+// ============================================================
+// OPTIMISATION DU PANIER
+// ============================================================
+
+export async function optimizeBasket(basketIdOrListId: string): Promise<OptimizationResult> {
+  const { data: listItems, error: itemsError } = await supabase
+    .from('list_items')
+    .select('product_id, qty')
+    .eq('list_id', basketIdOrListId)
+    .not('product_id', 'is', null);
+
+  if (itemsError) throw itemsError;
+  if (!listItems || listItems.length === 0) {
+    return {
+      totalSavings: 0,
+      standardOption: { storeName: 'Aucun magasin', total: 0 },
+      optimizedOption: { storeCount: 0, total: 0, breakdown: [] }
+    };
+  }
+
+  const productIds = Array.from(new Set(listItems.map((item: any) => item.product_id)));
+  const quantities: Record<string, number> = {};
+  listItems.forEach((item: any) => {
+    quantities[item.product_id] = (quantities[item.product_id] || 0) + Number(item.qty);
+  });
+
+  const { data: priceRows, error: pricesError } = await supabase
+    .from('best_prices_per_product')
+    .select('*')
+    .in('product_id', productIds);
+
+  if (pricesError) throw pricesError;
+
+  const storeMap: Record<string, {
+    id: string;
+    name: string;
+    chain: any;
+    logoUri: string;
+    items: Record<string, { price: number; image: string | null }>;
+  }> = {};
+
+  (priceRows || []).forEach((row: any) => {
+    if (!storeMap[row.store_id]) {
+      storeMap[row.store_id] = {
+        id: row.store_id,
+        name: row.store_name,
+        chain: row.chain || 'leclerc',
+        logoUri: row.logo_uri || '',
+        items: {}
+      };
+    }
+    storeMap[row.store_id].items[row.product_id] = {
+      price: Number(row.price),
+      image: row.image_url || null
+    };
+  });
+
+  const stores = Object.values(storeMap);
+  if (stores.length === 0) {
+    throw new Error("Aucun magasin trouvé avec des prix pour ces articles.");
+  }
+
+  let bestStandardStore = stores[0];
+  let lowestStandardTotal = Infinity;
+
+  stores.forEach(store => {
+    let currentTotal = 0;
+    let missingPenalty = 0;
+
+    productIds.forEach(pId => {
+      const qty = quantities[pId];
+      if (store.items[pId]) {
+        currentTotal += store.items[pId].price * qty;
+      } else {
+        missingPenalty += 5 * qty; 
+      }
+    });
+
+    const totalWithPenalty = currentTotal + missingPenalty;
+    if (totalWithPenalty < lowestStandardTotal) {
+      lowestStandardTotal = totalWithPenalty;
+      bestStandardStore = store;
+    }
+  });
+
+  let standardRealTotal = 0;
+  productIds.forEach(pId => {
+    const qty = quantities[pId];
+    standardRealTotal += (bestStandardStore.items[pId]?.price || 3.5) * qty; 
+  });
+
+  const itemDistribution: Record<string, { storeId: string; storeName: string; chain: string; logoUri: string; subtotal: number; count: number; thumbs: string[] }> = {};
+
+  productIds.forEach(pId => {
+    const qty = quantities[pId];
+    let bestProductStore = bestStandardStore;
+    let minProductPrice = bestStandardStore.items[pId]?.price || Infinity;
+
+    stores.forEach(store => {
+      if (store.items[pId] && store.items[pId].price < minProductPrice) {
+        minProductPrice = store.items[pId].price;
+        bestProductStore = store;
+      }
+    });
+
+    const finalPrice = bestProductStore.items[pId]?.price || 0;
+    const finalImage = bestProductStore.items[pId]?.image || '';
+
+    if (!itemDistribution[bestProductStore.id]) {
+      itemDistribution[bestProductStore.id] = {
+        storeId: bestProductStore.id,
+        storeName: bestProductStore.name,
+        chain: bestProductStore.chain,
+        logoUri: bestProductStore.logoUri,
+        subtotal: 0,
+        count: 0,
+        thumbs: []
+      };
+    }
+
+    itemDistribution[bestProductStore.id].subtotal += finalPrice * qty;
+    itemDistribution[bestProductStore.id].count += 1;
+    if (finalImage && itemDistribution[bestProductStore.id].thumbs.length < 3) {
+      itemDistribution[bestProductStore.id].thumbs.push(finalImage);
+    }
+  });
+
+  const breakdown = Object.values(itemDistribution).map(b => ({
+    storeId: b.storeId,
+    storeName: b.storeName,
+    logoUri: b.logoUri,
+    itemCount: b.count,
+    distanceKm: 1.5,
+    subtotal: b.subtotal,
+    thumbnails: b.thumbs
+  })).sort((a, b) => b.subtotal - a.subtotal);
+
+  const malinTotal = breakdown.reduce((sum, b) => sum + b.subtotal, 0);
+  const totalSavings = Math.max(0, standardRealTotal - malinTotal);
+
+  return {
+    totalSavings,
+    standardOption: {
+      storeName: bestStandardStore.name,
+      total: standardRealTotal
+    },
+    optimizedOption: {
+      storeCount: breakdown.length,
+      total: malinTotal,
+      breakdown
+    }
+  };
+}
+
+// ============================================================
+// COMMUNAUTÉ
+// ============================================================
+
+export async function getCommunityFeed(): Promise<CommunityActivityItem[]> {
+  const { data, error } = await supabase
+    .from('community_activity')
+    .select('*, users_profiles(display_name, avatar_url), products(name)')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.users_profiles?.display_name ?? 'Anonyme',
+    avatarUri: row.users_profiles?.avatar_url ?? '',
+    type: row.type as any, // Sécurité TypeScript : Transtypage explicite de l'action communautaire
+    message: row.message,
+    timeAgo: 'Récemment',
+    usefulCount: row.useful_count ?? 0,
+    proof: row.proof_image_url ? {
+      imageUri: row.proof_image_url,
+      productName: row.products?.name ?? 'Produit',
+      verifiedAt: row.created_at
+    } : undefined,
+    priceDropBadge: row.price_drop_badge ?? undefined 
+  }));
+}
+
+export async function getLeaderboard(scope: 'friends' | 'city' | 'france'): Promise<LeaderboardEntry[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  let query = supabase.from('users_profiles').select('*').order('total_savings', { ascending: false });
+
+  if (scope === 'friends') {
+    const { data: followedData } = await supabase
+      .from('follows')
+      .select('followed_id')
+      .eq('follower_id', user.id);
+    
+    const targetIds = (followedData ?? []).map((f: any) => f.followed_id).concat(user.id);
+    query = query.in('id', targetIds);
+  }
+
+  const { data, error } = await query.limit(50);
+  if (error) throw error;
+
+  return (data ?? []).map((row: any, index: number) => ({
+    rank: index + 1,
+    userId: row.id,
+    name: row.display_name,
+    avatarUri: row.avatar_url ?? '',
+    savings: Number(row.total_savings),
+    isMe: row.id === user.id
+  }));
+}
+
+// ============================================================
+// PROFIL
+// ============================================================
+
+export async function getMyProfile(): Promise<UserProfile> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { data, error } = await supabase
+    .from('users_profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error || !data) throw error ?? new Error('Profil introuvable.');
+
+  return {
+    id: data.id,
+    displayName: data.display_name,
+    avatarUrl: data.avatar_url,
+    plan: data.plan as any, // Sécurité TypeScript : Transtypage explicite du Plan
+    totalSavings: Number(data.total_savings),
+    totalPoints: data.total_points,
+    sentinelLevel: data.sentinel_level,
+    referralCode: data.referral_code,
+    invitedCount: data.invited_count,
+    ambassadorGoal: data.ambassador_goal,
+  };
+}
+
+// ============================================================
+// ÉVÉNEMENTS / FRAIS PARTAGÉS
+// ============================================================
+
+export async function getEvent(eventId: string): Promise<EventData | null> {
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) return null;
+
+  const { data: participants, error: partError } = await supabase
+    .from('event_participants')
+    .select('*')
+    .eq('event_id', eventId);
+
+  if (partError) throw partError;
+
+  const { data: items, error: itemsError } = await supabase
+    .from('event_items')
+    .select('*')
+    .eq('event_id', eventId);
+
+  if (itemsError) throw itemsError;
+
+  const mappedItems = (items ?? []).map((it: any) => ({
+    id: it.id,
+    name: it.name,
+    purchased: it.purchased,
+    pricePaid: it.price_paid ? Number(it.price_paid) : undefined,
+    proofImageUri: it.proof_image_url ?? undefined
+  }));
+
+  const total = mappedItems.reduce((sum, item) => sum + (item.pricePaid ?? 0), 0);
+  const totalParticipants = (participants ?? []).length || 1;
+  const standardShare = total / totalParticipants;
+
+  const paidAmounts: Record<string, number> = {};
+  (participants ?? []).forEach((p: any) => {
+    paidAmounts[p.user_id || p.id] = 0;
+  });
+
+  (items ?? []).forEach((it: any) => {
+    if (it.purchased && it.purchased_by && it.price_paid) {
+      paidAmounts[it.purchased_by] = (paidAmounts[it.purchased_by] || 0) + Number(it.price_paid);
+    }
+  });
+
+  const calculatedBalances = (participants ?? []).map((p: any) => {
+    const uId = p.user_id || p.id;
+    const totalPaidByMe = paidAmounts[uId] || 0;
+    return {
+      name: p.name,
+      paid: totalPaidByMe,
+      balance: totalPaidByMe - standardShare 
+    };
+  });
+
+  return {
+    id: event.id,
+    name: event.name,
+    status: event.status as any, // Sécurité TypeScript : Transtypage du statut de l'event
+    participants: (participants ?? []).map((p: any) => ({
+      userId: p.user_id ?? p.id,
+      name: p.name,
+      avatarUri: p.avatar_url
+    })),
+    items: mappedItems,
+    balances: calculatedBalances,
+    total
+  };
+}
+
+export async function addEventItem(eventId: string, name: string): Promise<void> {
+  const { error } = await supabase
+    .from('event_items')
+    .insert([{ event_id: eventId, name, purchased: false }]);
+  if (error) throw error;
+}
+
+export async function markItemPurchased(itemId: string, pricePaid: number, proofUri?: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('event_items')
+    .update({
+      purchased: true,
+      price_paid: pricePaid,
+      proof_image_url: proofUri,
+      purchased_by: user?.id ?? null
+    })
+    .eq('id', itemId);
+  if (error) throw error;
+}
+
+export async function settleEvent(eventId: string): Promise<void> {
+  const { error } = await supabase
+    .from('events')
+    .update({ status: 'settled' })
+    .eq('id', eventId);
+  if (error) throw error;
+}
