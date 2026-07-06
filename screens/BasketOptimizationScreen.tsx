@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
-import { Typography, Radii, Shadows } from '../theme/typography';
+import { colors, typography, spacing, radii, shadows } from '@/design';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { optimizeBasket } from '../services/api';
 
@@ -53,11 +52,11 @@ interface Props {
   onViewMap: () => void;
 }
 
-export default function BasketOptimizationScreen({ 
-  basketIdOrListId, 
-  onNavigate, 
-  onValidateRoute, 
-  onViewMap 
+export default function BasketOptimizationScreen({
+  basketIdOrListId,
+  onNavigate,
+  onValidateRoute,
+  onViewMap
 }: Props) {
   const [selectedScenario, setSelectedScenario] = useState<'standard' | 'malin'>('malin');
   const [result, setResult] = useState<OptimizationResult | null>(null);
@@ -74,8 +73,8 @@ export default function BasketOptimizationScreen({
   if (loading || !result) {
     return (
       <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={[Typography.bodyMd, { marginTop: 12, color: Colors.textSecondary }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[typography.bodyMedium, { marginTop: 12, color: colors.text.secondary }]}>
           Calcul de l'optimisation IA en cours...
         </Text>
       </View>
@@ -83,8 +82,8 @@ export default function BasketOptimizationScreen({
   }
 
   // Structure stricte et isolée
-  const currentStores: StoreBreakdown[] = selectedScenario === 'malin' 
-    ? result.optimizedOption.breakdown 
+  const currentStores: StoreBreakdown[] = selectedScenario === 'malin'
+    ? result.optimizedOption.breakdown
     : [
         {
           storeId: 'standard_mono',
@@ -103,37 +102,37 @@ export default function BasketOptimizationScreen({
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.avatarPlaceholder}>
-            <MaterialIcons name="account-circle" size={32} color={Colors.primary} />
+            <MaterialIcons name="account-circle" size={32} color={colors.primary} />
           </View>
-          <Text style={[Typography.h1, { color: Colors.primary }]}>Panier Malin</Text>
+          <Text style={[typography.h1, { color: colors.primary }]}>Panier Malin</Text>
         </View>
         <TouchableOpacity style={styles.headerButton}>
-          <MaterialIcons name="notifications-none" size={24} color={Colors.primary} />
+          <MaterialIcons name="notifications-none" size={24} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
+
         {/* Bandeau magique contextualisé */}
         <View style={[styles.magicBanner, selectedScenario === 'standard' && styles.magicBannerStandard]}>
           <View style={styles.magicHeaderRow}>
-            <MaterialIcons 
-              name={selectedScenario === 'malin' ? "auto-awesome" : "shopping-bag"} 
-              size={18} 
-              color={Colors.white} 
+            <MaterialIcons
+              name={selectedScenario === 'malin' ? "auto-awesome" : "shopping-bag"}
+              size={18}
+              color={colors.white}
             />
-            <Text style={[Typography.labelSm, { color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase' }]}>
+            <Text style={[typography.labelSm, { color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase' }]}>
               {selectedScenario === 'malin' ? "Optimisation trouvée" : "Scénario Mono-Magasin"}
             </Text>
           </View>
-          <Text style={[Typography.h1, { color: Colors.white, marginBottom: 4 }]}>
-            {selectedScenario === 'malin' 
+          <Text style={[typography.h1, { color: colors.white, marginBottom: 4 }]}>
+            {selectedScenario === 'malin'
               ? `Économie totale possible : ${formatPrice(result.totalSavings)}`
               : `Total panier : ${formatPrice(result.standardOption.total)}`
             }
           </Text>
-          <Text style={[Typography.bodyMd, { color: 'rgba(255,255,255,0.85)' }]}>
-            {selectedScenario === 'malin' 
+          <Text style={[typography.bodyMedium, { color: 'rgba(255,255,255,0.85)' }]}>
+            {selectedScenario === 'malin'
               ? "En répartissant vos achats intelligemment selon vos critères."
               : `Tous vos articles centralisés chez ${result.standardOption.storeName}.`
             }
@@ -147,11 +146,11 @@ export default function BasketOptimizationScreen({
             onPress={() => setSelectedScenario('standard')}
             activeOpacity={0.85}
           >
-            <Text style={[Typography.labelSm, { color: Colors.textSecondary }]}>OPTION STANDARD</Text>
-            <Text style={[Typography.bodyMd, { marginTop: 4, fontWeight: '600' }]} numberOfLines={1}>
+            <Text style={[typography.labelSm, { color: colors.text.secondary }]}>OPTION STANDARD</Text>
+            <Text style={[typography.bodyMedium, { marginTop: 4, fontWeight: '600' }]} numberOfLines={1}>
               {result.standardOption.storeName}
             </Text>
-            <Text style={[Typography.h2, { marginTop: 6, color: Colors.textPrimary }]}>
+            <Text style={[typography.h2, { marginTop: 6, color: colors.text.primary }]}>
               {formatPrice(result.standardOption.total)}
             </Text>
           </TouchableOpacity>
@@ -162,22 +161,22 @@ export default function BasketOptimizationScreen({
             activeOpacity={0.85}
           >
             <View style={styles.recommendedBadge}>
-              <Text style={[Typography.labelSm, { color: Colors.white, textTransform: 'uppercase', fontSize: 9 }]}>
+              <Text style={[typography.labelSm, { color: colors.white, textTransform: 'uppercase', fontSize: 9 }]}>
                 Recommandé
               </Text>
             </View>
-            <Text style={[Typography.labelSm, { color: Colors.primary }]}>OPTION MALIN</Text>
-            <Text style={[Typography.bodyMd, { marginTop: 4, fontWeight: '600' }]}>
+            <Text style={[typography.labelSm, { color: colors.primary }]}>OPTION MALIN</Text>
+            <Text style={[typography.bodyMedium, { marginTop: 4, fontWeight: '600' }]}>
               {result.optimizedOption.storeCount} magasins
             </Text>
-            <Text style={[Typography.h2, { color: Colors.primary, marginTop: 6 }]}>
+            <Text style={[typography.h2, { color: colors.primary, marginTop: 6 }]}>
               {formatPrice(result.optimizedOption.total)}
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Détail du trajet ou de la liste */}
-        <Text style={[Typography.h2, { marginBottom: 12 }]}>
+        <Text style={[typography.h2, { marginBottom: 12 }]}>
           {selectedScenario === 'malin' ? "Détails du trajet optimisé" : "Articles commandés"}
         </Text>
 
@@ -188,20 +187,20 @@ export default function BasketOptimizationScreen({
                 {store.logoUri ? (
                   <Image source={{ uri: store.logoUri }} style={styles.storeLogo} />
                 ) : (
-                  <MaterialIcons name="store" size={24} color={Colors.textSecondary} />
+                  <MaterialIcons name="store" size={24} color={colors.text.secondary} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.storeTopRow}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={[Typography.bodyLg, { fontWeight: '600' }]}>{store.storeName}</Text>
-                    <Text style={Typography.caption}>
+                    <Text style={[typography.bodyLarge, { fontWeight: '600' }]}>{store.storeName}</Text>
+                    <Text style={typography.caption}>
                       {store.itemCount} articles {store.distanceKm ? `• ${store.distanceKm} km` : ''}
                     </Text>
                   </View>
-                  <Text style={Typography.h2}>{formatPrice(store.subtotal)}</Text>
+                  <Text style={typography.h2}>{formatPrice(store.subtotal)}</Text>
                 </View>
-                
+
                 {store.thumbnails && store.thumbnails.length > 0 && (
                   <View style={styles.thumbRow}>
                     {store.thumbnails.map((uri: string, i: number) => (
@@ -221,8 +220,8 @@ export default function BasketOptimizationScreen({
                   <View style={styles.pathDot} />
                 </View>
                 <View style={styles.pathPill}>
-                  <MaterialIcons name="directions-car" size={16} color={Colors.textSecondary} />
-                  <Text style={Typography.caption}>Quelques minutes de trajet estimées</Text>
+                  <MaterialIcons name="directions-car" size={16} color={colors.text.secondary} />
+                  <Text style={typography.caption}>Quelques minutes de trajet estimées</Text>
                 </View>
               </View>
             )}
@@ -238,8 +237,8 @@ export default function BasketOptimizationScreen({
             style={styles.mapImage}
           />
           <View style={styles.mapOverlayPill}>
-            <MaterialIcons name="map" size={18} color={Colors.primary} />
-            <Text style={[Typography.caption, { fontWeight: '700', color: Colors.textPrimary }]}>
+            <MaterialIcons name="map" size={18} color={colors.primary} />
+            <Text style={[typography.caption, { fontWeight: '700', color: colors.text.primary }]}>
               Visualiser le trajet complet
             </Text>
           </View>
@@ -250,8 +249,8 @@ export default function BasketOptimizationScreen({
 
       {/* Bouton de validation d'itinéraire */}
       <TouchableOpacity style={styles.validateButton} onPress={onValidateRoute} activeOpacity={0.9}>
-        <MaterialIcons name="navigation" size={20} color={Colors.white} />
-        <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
+        <MaterialIcons name="navigation" size={20} color={colors.white} />
+        <Text style={[typography.bodyLarge, { color: colors.white, fontWeight: '600' }]}>
           {selectedScenario === 'malin' ? "Valider ce trajet malin" : "Confirmer ce magasin"}
         </Text>
       </TouchableOpacity>
@@ -262,27 +261,27 @@ export default function BasketOptimizationScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
+  root: { flex: 1, backgroundColor: colors.bg.primary },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     height: 64,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.bg.primary,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: colors.border.default,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   avatarPlaceholder: { width: 32, height: 32, justifyContent: 'center', alignItems: 'center' },
   headerButton: { padding: 4 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
   magicBanner: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radii.card,
+    backgroundColor: colors.primary,
+    borderRadius: radii.xl,
     padding: 20,
     marginBottom: 24,
-    ...Shadows.active,
+    ...shadows.lg,
   },
   magicBannerStandard: {
     backgroundColor: '#5C6BC0',
@@ -292,18 +291,18 @@ const styles = StyleSheet.create({
   scenarioCard: {
     flex: 1,
     backgroundColor: '#F5F5F5',
-    borderRadius: Radii.card,
+    borderRadius: radii.xl,
     padding: 16,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  scenarioCardMalin: { backgroundColor: Colors.white, position: 'relative', overflow: 'hidden', ...Shadows.soft },
-  scenarioCardSelected: { borderColor: Colors.primary, backgroundColor: Colors.white },
+  scenarioCardMalin: { backgroundColor: colors.white, position: 'relative', overflow: 'hidden', ...shadows.sm },
+  scenarioCardSelected: { borderColor: colors.primary, backgroundColor: colors.white },
   recommendedBadge: {
     position: 'absolute',
     top: 0,
     right: 0,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderBottomLeftRadius: 8,
@@ -311,11 +310,11 @@ const styles = StyleSheet.create({
   storeCard: {
     flexDirection: 'row',
     gap: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.card,
+    backgroundColor: colors.white,
+    borderRadius: radii.xl,
     padding: 16,
     marginBottom: 4,
-    ...Shadows.soft,
+    ...shadows.sm,
   },
   storeLogoBox: {
     width: 48,
@@ -323,18 +322,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#F9F9F9',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border.default,
     alignItems: 'center',
     justifyContent: 'center',
   },
   storeLogo: { width: 34, height: 34, resizeMode: 'contain' },
   storeTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   thumbRow: { flexDirection: 'row', gap: 6, marginTop: 12, flexWrap: 'wrap' },
-  productThumb: { width: 32, height: 32, borderRadius: 6, backgroundColor: Colors.border },
+  productThumb: { width: 32, height: 32, borderRadius: 6, backgroundColor: colors.border.default },
   pathIndicatorRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingLeft: 24, paddingVertical: 8 },
   pathDots: { alignItems: 'center', width: 6 },
-  pathDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.border },
-  pathDashedLine: { width: 1, height: 24, backgroundColor: Colors.border, marginVertical: 2 },
+  pathDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border.default },
+  pathDashedLine: { width: 1, height: 24, backgroundColor: colors.border.default, marginVertical: 2 },
   pathPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,11 +345,11 @@ const styles = StyleSheet.create({
   },
   mapPreview: {
     height: 140,
-    borderRadius: Radii.card,
+    borderRadius: radii.xl,
     overflow: 'hidden',
     position: 'relative',
     marginTop: 20,
-    ...Shadows.soft,
+    ...shadows.sm,
   },
   mapImage: { width: '100%', height: '100%' },
   mapOverlayPill: {
@@ -364,7 +363,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    ...Shadows.soft,
+    ...shadows.sm,
   },
   validateButton: {
     position: 'absolute',
@@ -372,13 +371,13 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 52,
-    backgroundColor: Colors.primary,
-    borderRadius: Radii.button,
+    backgroundColor: colors.primary,
+    borderRadius: radii.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    ...Shadows.active,
+    ...shadows.lg,
     zIndex: 10,
   },
 });

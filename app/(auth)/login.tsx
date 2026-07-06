@@ -29,7 +29,7 @@ export default function LoginScreen() {
     setLoading(true);
     const { error } = await signIn(email.trim(), password);
     setLoading(false);
-    if (error) setError(error);
+    if (error) setError(error?.message || 'Une erreur est survenue.');
   };
 
   return (

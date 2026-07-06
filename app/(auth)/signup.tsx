@@ -42,7 +42,7 @@ export default function SignUpScreen() {
 
     try {
       const { error: signUpError }: any = await withTimeout(
-        signUp(email.trim(), password),
+        signUp(email.trim(), password, name.trim()),
         15000
       );
       if (signUpError) {

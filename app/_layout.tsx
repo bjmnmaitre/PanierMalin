@@ -8,12 +8,12 @@ import { View } from 'react-native';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 
 function RootLayoutNav() {
-  const { session, loading } = useAuth();
+  const { session, isLoading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
 
   React.useEffect(() => {
-    if (loading) return;
+    if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
 
@@ -22,9 +22,9 @@ function RootLayoutNav() {
       router.replace('/(auth)/welcome');
     } else if (session && inAuthGroup) {
       // Connecté mais encore sur un écran d'auth → redirection vers l'app
-      router.replace('/(tabs)');  
+      router.replace('/(tabs)');
     }
-  }, [session, loading, segments]);
+  }, [session, isLoading, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

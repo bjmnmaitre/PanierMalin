@@ -4,7 +4,8 @@
 // Ils appellent toujours une fonction d'ici. Pour brancher le vrai backend,
 // on modifie UNIQUEMENT ce fichier — aucun écran n'a besoin de changer.
 
-import { supabase } from '../lib/supabase'; // RESTAURATION : Ton chemin d'origine exact
+import { apiClient } from './api/client';
+const supabase = apiClient.getSupabase(); // Réutilise l'instance sécurisée globale
 import {
   Product,
   ProductWithOffers,
@@ -20,14 +21,14 @@ import {
 } from './types';
 
 // Flags par domaine — Tous désactivés pour basculer sur le vrai Supabase !
-const USE_MOCK_PRODUCTS = false;     
-const USE_MOCK_PROFILE = false;      
-const USE_MOCK_LISTS = false;        
-const USE_MOCK_BASKETS = false;      
-const USE_MOCK_OPTIMIZE = false;     
-const USE_MOCK_FEED = false;         
-const USE_MOCK_LEADERBOARD = false;  
-const USE_MOCK_EVENTS = false;       
+const USE_MOCK_PRODUCTS = false;
+const USE_MOCK_PROFILE = false;
+const USE_MOCK_LISTS = false;
+const USE_MOCK_BASKETS = false;
+const USE_MOCK_OPTIMIZE = false;
+const USE_MOCK_FEED = false;
+const USE_MOCK_LEADERBOARD = false;
+const USE_MOCK_EVENTS = false;
 const USE_MOCK_PRICE_ACTIONS = false;
 
 // ============================================================
@@ -179,7 +180,7 @@ export async function confirmPriceWithPhoto(
     .insert([{
       product_id: productId,
       store_id: storeId,
-      price: 0, 
+      price: 0,
       scanned_by: user.id,
       proof_image_url: photoUri,
       source: 'user',
@@ -242,7 +243,7 @@ export async function getMyLists(): Promise<ShoppingList[]> {
     .eq('user_id', user.id);
 
   if (sharedError) throw sharedError;
-  const sharedIds = (sharedBaskets ?? []).map((b: any) => b.list_id);
+  const sharedIds: string[] = (sharedBaskets ?? []).map((b: any) => b.list_id as string);
 
   const { data: lists, error: listsError } = await supabase
     .from('shopping_lists')
@@ -281,7 +282,7 @@ export async function getMyLists(): Promise<ShoppingList[]> {
     const listCollabs = (collaborators ?? []).filter((c: any) => c.list_id === list.id);
     const collaboratorAvatars: string[] = listCollabs
       .map((c: any) => c.users_profiles?.avatar_url)
-      .filter((url): url is string => typeof url === 'string');
+      .filter((url: unknown): url is string => typeof url === 'string');
 
     return {
       id: list.id,
@@ -396,7 +397,7 @@ export async function getSavedBaskets(): Promise<SavedBasketData[]> {
 
   if (basketError) throw basketError;
 
-  const basketIds = baskets.map((b: any) => b.id);
+  const basketIds: string[] = (baskets ?? []).map((b: any) => b.id as string);
 
   const { data: items, error: itemsError } = await supabase
     .from('saved_basket_items')
@@ -412,7 +413,7 @@ export async function getSavedBaskets(): Promise<SavedBasketData[]> {
 
   if (collabError) throw collabError;
 
-  return baskets.map((b: any) => {
+  return (baskets ?? []).map((b: any) => {
     const basketItems = (items ?? []).filter((it: any) => it.basket_id === b.id);
     const basketCollabs = (collaborators ?? []).filter((c: any) => c.basket_id === b.id);
 
@@ -431,6 +432,14 @@ export async function getSavedBaskets(): Promise<SavedBasketData[]> {
 // OPTIMISATION DU PANIER
 // ============================================================
 
+interface StoreWithItems {
+  id: string;
+  name: string;
+  chain: any;
+  logoUri: string;
+  items: Record<string, { price: number; image: string | null }>;
+}
+
 export async function optimizeBasket(basketIdOrListId: string): Promise<OptimizationResult> {
   const { data: listItems, error: itemsError } = await supabase
     .from('list_items')
@@ -447,10 +456,16 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
     };
   }
 
-  const productIds = Array.from(new Set(listItems.map((item: any) => item.product_id)));
+  // Typage explicite en string[] pour éviter toute inférence en 'unknown'
+  // lors de l'utilisation de ces valeurs comme clés d'index plus bas.
+  const productIds: string[] = Array.from(
+    new Set(listItems.map((item: any) => item.product_id as string))
+  );
+
   const quantities: Record<string, number> = {};
   listItems.forEach((item: any) => {
-    quantities[item.product_id] = (quantities[item.product_id] || 0) + Number(item.qty);
+    const pId: string = item.product_id;
+    quantities[pId] = (quantities[pId] || 0) + Number(item.qty);
   });
 
   const { data: priceRows, error: pricesError } = await supabase
@@ -460,48 +475,45 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
 
   if (pricesError) throw pricesError;
 
-  const storeMap: Record<string, {
-    id: string;
-    name: string;
-    chain: any;
-    logoUri: string;
-    items: Record<string, { price: number; image: string | null }>;
-  }> = {};
+  const storeMap: Record<string, StoreWithItems> = {};
 
   (priceRows || []).forEach((row: any) => {
-    if (!storeMap[row.store_id]) {
-      storeMap[row.store_id] = {
-        id: row.store_id,
+    const storeId: string = row.store_id;
+    const productId: string = row.product_id;
+
+    if (!storeMap[storeId]) {
+      storeMap[storeId] = {
+        id: storeId,
         name: row.store_name,
         chain: row.chain || 'leclerc',
         logoUri: row.logo_uri || '',
         items: {}
       };
     }
-    storeMap[row.store_id].items[row.product_id] = {
+    storeMap[storeId].items[productId] = {
       price: Number(row.price),
       image: row.image_url || null
     };
   });
 
-  const stores = Object.values(storeMap);
+  const stores: StoreWithItems[] = Object.values(storeMap);
   if (stores.length === 0) {
     throw new Error("Aucun magasin trouvé avec des prix pour ces articles.");
   }
 
-  let bestStandardStore = stores[0];
+  let bestStandardStore: StoreWithItems = stores[0];
   let lowestStandardTotal = Infinity;
 
-  stores.forEach(store => {
+  stores.forEach((store: StoreWithItems) => {
     let currentTotal = 0;
     let missingPenalty = 0;
 
-    productIds.forEach(pId => {
+    productIds.forEach((pId: string) => {
       const qty = quantities[pId];
       if (store.items[pId]) {
         currentTotal += store.items[pId].price * qty;
       } else {
-        missingPenalty += 5 * qty; 
+        missingPenalty += 5 * qty;
       }
     });
 
@@ -513,19 +525,29 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
   });
 
   let standardRealTotal = 0;
-  productIds.forEach(pId => {
+  productIds.forEach((pId: string) => {
     const qty = quantities[pId];
-    standardRealTotal += (bestStandardStore.items[pId]?.price || 3.5) * qty; 
+    standardRealTotal += (bestStandardStore.items[pId]?.price || 3.5) * qty;
   });
 
-  const itemDistribution: Record<string, { storeId: string; storeName: string; chain: string; logoUri: string; subtotal: number; count: number; thumbs: string[] }> = {};
+  interface ItemDistributionEntry {
+    storeId: string;
+    storeName: string;
+    chain: string;
+    logoUri: string;
+    subtotal: number;
+    count: number;
+    thumbs: string[];
+  }
 
-  productIds.forEach(pId => {
+  const itemDistribution: Record<string, ItemDistributionEntry> = {};
+
+  productIds.forEach((pId: string) => {
     const qty = quantities[pId];
-    let bestProductStore = bestStandardStore;
-    let minProductPrice = bestStandardStore.items[pId]?.price || Infinity;
+    let bestProductStore: StoreWithItems = bestStandardStore;
+    let minProductPrice = bestStandardStore.items[pId]?.price ?? Infinity;
 
-    stores.forEach(store => {
+    stores.forEach((store: StoreWithItems) => {
       if (store.items[pId] && store.items[pId].price < minProductPrice) {
         minProductPrice = store.items[pId].price;
         bestProductStore = store;
@@ -554,15 +576,17 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
     }
   });
 
-  const breakdown = Object.values(itemDistribution).map(b => ({
-    storeId: b.storeId,
-    storeName: b.storeName,
-    logoUri: b.logoUri,
-    itemCount: b.count,
-    distanceKm: 1.5,
-    subtotal: b.subtotal,
-    thumbnails: b.thumbs
-  })).sort((a, b) => b.subtotal - a.subtotal);
+  const breakdown = Object.values(itemDistribution)
+    .map((b: ItemDistributionEntry) => ({
+      storeId: b.storeId,
+      storeName: b.storeName,
+      logoUri: b.logoUri,
+      itemCount: b.count,
+      distanceKm: 1.5,
+      subtotal: b.subtotal,
+      thumbnails: b.thumbs
+    }))
+    .sort((a, b) => b.subtotal - a.subtotal);
 
   const malinTotal = breakdown.reduce((sum, b) => sum + b.subtotal, 0);
   const totalSavings = Math.max(0, standardRealTotal - malinTotal);
@@ -608,7 +632,7 @@ export async function getCommunityFeed(): Promise<CommunityActivityItem[]> {
       productName: row.products?.name ?? 'Produit',
       verifiedAt: row.created_at
     } : undefined,
-    priceDropBadge: row.price_drop_badge ?? undefined 
+    priceDropBadge: row.price_drop_badge ?? undefined
   }));
 }
 
@@ -623,8 +647,8 @@ export async function getLeaderboard(scope: 'friends' | 'city' | 'france'): Prom
       .from('follows')
       .select('followed_id')
       .eq('follower_id', user.id);
-    
-    const targetIds = (followedData ?? []).map((f: any) => f.followed_id).concat(user.id);
+
+    const targetIds: string[] = (followedData ?? []).map((f: any) => f.followed_id as string).concat(user.id);
     query = query.in('id', targetIds);
   }
 
@@ -712,22 +736,24 @@ export async function getEvent(eventId: string): Promise<EventData | null> {
 
   const paidAmounts: Record<string, number> = {};
   (participants ?? []).forEach((p: any) => {
-    paidAmounts[p.user_id || p.id] = 0;
+    const key: string = p.user_id || p.id;
+    paidAmounts[key] = 0;
   });
 
   (items ?? []).forEach((it: any) => {
     if (it.purchased && it.purchased_by && it.price_paid) {
-      paidAmounts[it.purchased_by] = (paidAmounts[it.purchased_by] || 0) + Number(it.price_paid);
+      const key: string = it.purchased_by;
+      paidAmounts[key] = (paidAmounts[key] || 0) + Number(it.price_paid);
     }
   });
 
   const calculatedBalances = (participants ?? []).map((p: any) => {
-    const uId = p.user_id || p.id;
+    const uId: string = p.user_id || p.id;
     const totalPaidByMe = paidAmounts[uId] || 0;
     return {
       name: p.name,
       paid: totalPaidByMe,
-      balance: totalPaidByMe - standardShare 
+      balance: totalPaidByMe - standardShare
     };
   });
 
