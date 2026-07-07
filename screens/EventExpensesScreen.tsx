@@ -14,7 +14,7 @@ import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getEvent } from '../services/api';
-import { EventData } from '../services/types';
+import { EventData } from '../types';
 
 function formatEuro(value: number): string {
   return `${value.toFixed(2).replace('.', ',')}€`;

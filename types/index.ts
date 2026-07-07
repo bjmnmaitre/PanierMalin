@@ -22,6 +22,8 @@ export interface UserProfile extends User {
   totalPoints: number;
   referralCode: string;
   invitedCount: number;
+  sentinelLevel?: number;
+  ambassadorGoal?: number;
 }
 
 /**
@@ -34,14 +36,14 @@ export interface Product {
   id: string;
   ean: string;
   name: string;
-  brand?: string;
-  category?: string;
+  brand?: string | null;
+  category?: string | null;
   subcategory?: string;
-  nutriscore?: 'A' | 'B' | 'C' | 'D' | 'E';
-  imageUrl?: string;
+  nutriscore?: 'A' | 'B' | 'C' | 'D' | 'E' | null;
+  imageUrl?: string | null;
   description?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type StoreChain =
@@ -70,15 +72,20 @@ export interface Store {
 
 export interface StoreOffer {
   id: string;
-  productId: string;
+  productId?: string;
   storeId: string;
   price: number;
   isVerified: boolean;
-  verifiedAt?: string;
+  verifiedAt: string;
   proofImageUrl?: string;
-  freshness: 'fresh' | 'recent' | 'old';
-  createdAt: string;
-  updatedAt: string;
+  proofImageUri?: string;
+  freshness?: 'fresh' | 'recent' | 'old';
+  createdAt?: string;
+  updatedAt?: string;
+  storeName: string;
+  chain?: StoreChain;
+  logoUri: string;
+  distanceKm: number;
 }
 
 export interface ProductWithOffers extends Product {
@@ -86,6 +93,21 @@ export interface ProductWithOffers extends Product {
   minPrice?: number;
   maxPrice?: number;
   avgPrice?: number;
+}
+
+export interface ProductPrice {
+  id: string;
+  productId: string;
+  storeId: string;
+  price: number;
+  proofImageUrl?: string | null;
+  isVerified: boolean;
+  verifiedAt?: string | null;
+  storeName?: string;
+  chain?: string | null;
+  logoUri?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 /**
@@ -96,7 +118,7 @@ export interface ProductWithOffers extends Product {
 
 export interface ShoppingList {
   id: string;
-  userId: string;
+  userId?: string;
   name: string;
   description?: string;
   itemCount: number;
@@ -104,23 +126,38 @@ export interface ShoppingList {
   estimatedTotal: number;
   isShared: boolean;
   isArchived: boolean;
-  collaborators: string[]; // User IDs
-  createdAt: string;
-  updatedAt: string;
+  collaborators?: string[]; // User IDs
+  collaboratorAvatars?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ListItem {
   id: string;
   listId: string;
-  productId?: string;
-  customName?: string;
+  productId?: string | null;
+  customName?: string | null;
   quantity: number;
+  qty?: number;
   unit?: string;
   isDone: boolean;
+  checked: boolean;
   estimatedPrice?: number;
+  price?: number;
   notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  brand?: string;
+  imageUrl?: string;
+  aiBestPrice?: {
+    price: number;
+    storeName: string;
+  };
+  communityPromo?: {
+    discountLabel: string;
+    photoUri: string;
+    userName: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SavedBasket {
@@ -134,6 +171,8 @@ export interface SavedBasket {
   createdAt: string;
 }
 
+export interface SavedBasketData extends SavedBasket {}
+
 /**
  * ============================================
  * OPTIMIZATION
@@ -142,21 +181,22 @@ export interface SavedBasket {
 
 export interface OptimizationResult {
   totalSavings: number;
-  savingsPercentage: number;
+  savingsPercentage?: number;
 
   standardOption: {
-    storeId: string;
+    storeId?: string;
     storeName: string;
     logoUrl?: string;
+    logoUri?: string;
     total: number;
-    distance: number;
+    distance?: number;
   };
 
   optimizedOption: {
     storeCount: number;
     total: number;
-    distance: number;
-    savings: number;
+    distance?: number;
+    savings?: number;
     breakdown: StoreBreakdown[];
   };
 }
@@ -165,12 +205,14 @@ export interface StoreBreakdown {
   storeId: string;
   storeName: string;
   logoUrl?: string;
-  chain: StoreChain;
-  distance: number;
-  itemCount: number;
+  logoUri?: string;
+  chain?: StoreChain;
+  distance?: number;
+  distanceKm?: number;
+  itemCount?: number;
   subtotal: number;
-  itemBreakdown: ItemBreakdown[];
-  thumbnails: string[];
+  itemBreakdown?: ItemBreakdown[];
+  thumbnails?: string[];
 }
 
 export interface ItemBreakdown {
@@ -197,9 +239,17 @@ export interface CommunityActivity {
   timestamp: string;
   usefulCount: number;
   proof?: {
-    imageUrl: string;
+    imageUrl?: string;
+    imageUri?: string;
     productName: string;
+    verifiedAt?: string;
   };
+}
+
+export interface CommunityActivityItem extends CommunityActivity {
+  avatarUri?: string;
+  timeAgo?: string;
+  priceDropBadge?: string;
 }
 
 export interface LeaderboardEntry {
@@ -207,8 +257,11 @@ export interface LeaderboardEntry {
   userId: string;
   name: string;
   avatarUrl?: string;
+  avatarUri?: string;
   totalSavings: number;
+  savings: number;
   isCurrentUser: boolean;
+  isMe: boolean;
 }
 
 /**
@@ -216,6 +269,16 @@ export interface LeaderboardEntry {
  * EVENTS & SHARED EXPENSES
  * ============================================
  */
+
+export interface EventData {
+  id: string;
+  name: string;
+  status: 'open' | 'settled';
+  participants: EventParticipant[];
+  items: EventItemData[];
+  balances: EventBalance[];
+  total: number;
+}
 
 export interface Event {
   id: string;
@@ -234,7 +297,25 @@ export interface EventParticipant {
   userId: string;
   name: string;
   avatarUrl?: string;
-  paidAmount: number;
+  avatarUri?: string | null;
+  paidAmount?: number;
+  balance?: number;
+}
+
+export interface EventItemData {
+  id: string;
+  name: string;
+  purchased: boolean;
+  addedByName?: string;
+  addedByAvatarUri?: string;
+  purchasedByName?: string;
+  pricePaid?: number;
+  proofImageUri?: string;
+}
+
+export interface EventBalance {
+  name: string;
+  paid: number;
   balance: number;
 }
 

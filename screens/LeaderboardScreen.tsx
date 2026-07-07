@@ -14,7 +14,7 @@ import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getLeaderboard } from '../services/api';
-import { LeaderboardEntry } from '../services/types';
+import { LeaderboardEntry } from '../types';
 
 type FilterTab = 'friends' | 'city' | 'france';
 
@@ -155,7 +155,7 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
                     { color: p.rank === 1 ? Colors.white : Colors.primary, textTransform: 'none' },
                   ]}
                 >
-                  {formatSavings(p.savings)}
+                  {formatSavings(p.savings ?? p.totalSavings ?? 0)}
                 </Text>
               </View>
             </View>
@@ -183,7 +183,7 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
                   {row.name}
                 </Text>
               </View>
-              <Text style={[Typography.bodyLg, row.isMe && { color: Colors.primary }]}>{formatSavings(row.savings)}</Text>
+              <Text style={[Typography.bodyLg, row.isMe && { color: Colors.primary }]}>{formatSavings(row.savings ?? row.totalSavings ?? 0)}</Text>
             </View>
           ))}
         </View>

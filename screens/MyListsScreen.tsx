@@ -22,7 +22,7 @@ import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getMyLists, createShoppingList } from '../services/api';
-import { ShoppingList } from '../services/types';
+import { ShoppingList } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ActiveList {

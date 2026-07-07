@@ -20,7 +20,7 @@ import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getMyProfile } from '../services/api';
-import { UserProfile } from '../services/types';
+import { UserProfile } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Props {

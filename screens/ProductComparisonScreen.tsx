@@ -15,7 +15,7 @@ import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import FreshnessBadge from '../components/FreshnessBadge';
 import { getProductByEan } from '../services/api';
-import { ProductWithOffers, StoreOffer } from '../services/types';
+import { ProductWithOffers, StoreOffer } from '../types';
 
 function formatPrice(price: number): string {
   return `${price.toFixed(2).replace('.', ',')}€`;
@@ -113,14 +113,14 @@ export default function ProductComparisonScreen({
                 <View style={styles.bestPriceValueRow}>
                   <Text style={styles.bestPriceValue}>{formatPrice(bestOffer.price)}</Text>
                   <Text style={[Typography.caption, { color: 'rgba(255,255,255,0.8)' }]}>
-                    chez {bestOffer.storeName.split(' ')[0]}
+                    chez {(bestOffer.storeName ?? 'Magasin').split(' ')[0]}
                   </Text>
                 </View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <View style={styles.pulseDotRow}>
                   <View style={styles.pulseDot} />
-                  <FreshnessBadge verifiedAt={bestOffer.verifiedAt} />
+                  <FreshnessBadge verifiedAt={bestOffer.verifiedAt ?? new Date().toISOString()} />
                 </View>
                 <Text style={[Typography.caption, { color: 'rgba(255,255,255,0.8)' }]}>
                   à {bestOffer.distanceKm} km de vous
@@ -147,7 +147,7 @@ export default function ProductComparisonScreen({
                   <View style={styles.offerMetaRow}>
                     <Text style={Typography.caption}>{offer.distanceKm} km</Text>
                     <Text style={[Typography.caption, { color: Colors.border }]}>•</Text>
-                    <FreshnessBadge verifiedAt={offer.verifiedAt} />
+                    <FreshnessBadge verifiedAt={offer.verifiedAt ?? new Date().toISOString()} />
                   </View>
                 </View>
               </View>
@@ -155,8 +155,8 @@ export default function ProductComparisonScreen({
                 <Text style={[Typography.h2, { color: index === 0 ? Colors.primary : Colors.textPrimary }]}>
                   {formatPrice(offer.price)}
                 </Text>
-                {offer.proofImageUri && (
-                  <Image source={{ uri: offer.proofImageUri }} style={styles.proofThumb} />
+                {(offer.proofImageUri ?? offer.proofImageUrl) && (
+                  <Image source={{ uri: offer.proofImageUri ?? offer.proofImageUrl }} style={styles.proofThumb} />
                 )}
               </View>
             </View>

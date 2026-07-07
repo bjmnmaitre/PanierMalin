@@ -19,7 +19,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
-import { ListItem } from '../services/types';
+import { ListItem } from '../types';
 import { getListItems, addListItem, toggleItemChecked, deleteListItem } from '../services/api';
 
 interface ListDetailScreenProps {
@@ -72,7 +72,7 @@ export default function ListDetailScreen({ listId, listName, onBack }: ListDetai
       setItems((prevItems) =>
         prevItems.map((i) => (i.id === item.id ? { ...i, checked: !originalChecked } : i))
       );
-      await toggleItemChecked(item.id, originalChecked);
+      await toggleItemChecked(item.id, Boolean(originalChecked));
     } catch (err) {
       console.error('[ListDetailScreen] Erreur modification statut article', err);
       setItems((prevItems) =>

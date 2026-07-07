@@ -18,7 +18,7 @@ import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getSavedBaskets } from '../services/api';
-import { SavedBasketData } from '../services/types';
+import { SavedBasketData } from '../types';
 
 type OptimizeStatus = 'idle' | 'loading' | 'done';
 

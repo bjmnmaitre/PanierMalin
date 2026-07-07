@@ -19,7 +19,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import { getMyProfile } from '../services/api';
-import { UserProfile } from '../services/types';
+import { UserProfile } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Props {

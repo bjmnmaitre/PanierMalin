@@ -20,7 +20,7 @@ import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import FreshnessBadge from '../components/FreshnessBadge';
 import { getCommunityFeed } from '../services/api';
-import { CommunityActivityItem } from '../services/types';
+import { CommunityActivityItem } from '../types';
 
 interface Props {
   onNavigate: (tab: TabKey) => void;
@@ -135,7 +135,7 @@ export default function CommunityFeedScreen({
                             {item.proof.productName}
                           </Text>
                           <View style={{ marginTop: 2 }}>
-                            <FreshnessBadge verifiedAt={item.proof.verifiedAt} />
+                            <FreshnessBadge verifiedAt={item.proof.verifiedAt ?? item.proof.imageUrl ?? new Date().toISOString()} />
                           </View>
                         </View>
                       </View>

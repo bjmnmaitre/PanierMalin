@@ -194,7 +194,14 @@ export function useForm<T extends Record<string, any>>({
 
   // Is form dirty (has changes)
   const isDirty = useMemo(() => {
-    return JSON.stringify(values) !== JSON.stringify(initialValues);
+    const currentKeys = Object.keys(values);
+    const initialKeys = Object.keys(initialValues);
+
+    if (currentKeys.length !== initialKeys.length) {
+      return true;
+    }
+
+    return currentKeys.some((key) => values[key] !== initialValues[key]);
   }, [values, initialValues]);
 
   // Build field binding helpers (spread directly into <Input {...} />)

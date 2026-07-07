@@ -18,7 +18,7 @@ import {
   LeaderboardEntry,
   UserProfile,
   EventData,
-} from './types';
+} from '../types';
 
 // Flags par domaine — Tous désactivés pour basculer sur le vrai Supabase !
 const USE_MOCK_PRODUCTS = false;
@@ -311,6 +311,7 @@ export async function createShoppingList(name: string): Promise<ShoppingList> {
 
   return {
     id: data.id,
+    userId: data.user_id,
     name: data.name,
     itemCount: 0,
     doneCount: 0,
@@ -318,6 +319,9 @@ export async function createShoppingList(name: string): Promise<ShoppingList> {
     isShared: data.is_shared,
     isArchived: data.is_archived,
     collaboratorAvatars: [],
+    collaborators: [],
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
   };
 }
 
@@ -334,10 +338,12 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     listId: item.list_id,
     productId: item.product_id,
     customName: item.custom_name ?? item.products?.name ?? null,
+    quantity: Number(item.qty),
+    qty: Number(item.qty),
+    isDone: Boolean(item.checked),
+    checked: Boolean(item.checked),
     brand: item.products?.brand,
     imageUrl: item.products?.image_url,
-    qty: Number(item.qty),
-    checked: item.checked,
     price: item.price !== null ? Number(item.price) : undefined,
   }));
 }
@@ -356,8 +362,10 @@ export async function addListItem(listId: string, customName: string, qty: numbe
     listId: data.list_id,
     productId: data.product_id,
     customName: data.custom_name,
+    quantity: Number(data.qty),
     qty: Number(data.qty),
-    checked: data.checked,
+    isDone: Boolean(data.checked),
+    checked: Boolean(data.checked),
     price: data.price !== null ? Number(data.price) : undefined,
   };
 }
@@ -419,11 +427,13 @@ export async function getSavedBaskets(): Promise<SavedBasketData[]> {
 
     return {
       id: b.id,
+      userId: b.user_id,
       name: b.name,
       itemCount: basketItems.reduce((sum: number, it: any) => sum + Number(it.qty), 0),
       icon: b.icon,
       isShared: basketCollabs.length > 0,
-      collaboratorCount: basketCollabs.length + 1
+      collaboratorCount: basketCollabs.length + 1,
+      createdAt: b.created_at,
     };
   });
 }
@@ -623,12 +633,15 @@ export async function getCommunityFeed(): Promise<CommunityActivityItem[]> {
     userId: row.user_id,
     userName: row.users_profiles?.display_name ?? 'Anonyme',
     avatarUri: row.users_profiles?.avatar_url ?? '',
-    type: row.type as any, // Sécurité TypeScript : Transtypage explicite de l'action communautaire
+    avatarUrl: row.users_profiles?.avatar_url ?? '',
+    type: row.type as any,
     message: row.message,
+    timestamp: row.created_at ?? new Date().toISOString(),
     timeAgo: 'Récemment',
     usefulCount: row.useful_count ?? 0,
     proof: row.proof_image_url ? {
       imageUri: row.proof_image_url,
+      imageUrl: row.proof_image_url,
       productName: row.products?.name ?? 'Produit',
       verifiedAt: row.created_at
     } : undefined,
@@ -660,7 +673,10 @@ export async function getLeaderboard(scope: 'friends' | 'city' | 'france'): Prom
     userId: row.id,
     name: row.display_name,
     avatarUri: row.avatar_url ?? '',
+    avatarUrl: row.avatar_url ?? '',
+    totalSavings: Number(row.total_savings),
     savings: Number(row.total_savings),
+    isCurrentUser: row.id === user.id,
     isMe: row.id === user.id
   }));
 }
@@ -683,9 +699,12 @@ export async function getMyProfile(): Promise<UserProfile> {
 
   return {
     id: data.id,
+    email: data.email ?? '',
     displayName: data.display_name,
     avatarUrl: data.avatar_url,
-    plan: data.plan as any, // Sécurité TypeScript : Transtypage explicite du Plan
+    createdAt: data.created_at ?? new Date().toISOString(),
+    updatedAt: data.updated_at ?? new Date().toISOString(),
+    plan: data.plan as any,
     totalSavings: Number(data.total_savings),
     totalPoints: data.total_points,
     sentinelLevel: data.sentinel_level,
