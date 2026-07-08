@@ -5,6 +5,7 @@ import { TabKey } from '../components/BottomNav';
 export const TAB_ROUTES: Record<TabKey, string> = {
   home: '/(tabs)',
   scanner: '/(tabs)/scanner',
+  map: '/(tabs)/map',
   community: '/(tabs)/community',
   lists: '/(tabs)/lists',
   profile: '/(tabs)/profile',

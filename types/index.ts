@@ -58,16 +58,12 @@ export type StoreChain =
 
 export interface Store {
   id: string;
-  chain: StoreChain;
   name: string;
+  brand: string;
   address: string;
   latitude: number;
   longitude: number;
-  logoUrl?: string;
-  phone?: string;
-  website?: string;
-  rating?: number;
-  createdAt: string;
+  hours: string;
 }
 
 export interface StoreOffer {

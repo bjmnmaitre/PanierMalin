@@ -10,6 +10,7 @@ import {
   Product,
   ProductWithOffers,
   ProductPrice,
+  Store,
   ShoppingList,
   ListItem,
   SavedBasketData,
@@ -122,6 +123,174 @@ export async function getProductByEan(ean: string): Promise<ProductWithOffers | 
       isVerified: p.is_verified,
     })),
   };
+}
+
+const storeLookupCache: Record<string, { timestamp: number; stores: Store[] }> = {};
+const STORE_CACHE_TTL_MS = 30_000;
+
+function inferBrandFromName(name?: string, fallback?: string): string {
+  const source = `${name ?? ''} ${fallback ?? ''}`.toLowerCase();
+
+  const brandPatterns: Array<{ regex: RegExp; brand: string }> = [
+    { regex: /\bleclerc\b/i, brand: 'Leclerc' },
+    { regex: /\blidl\b/i, brand: 'Lidl' },
+    { regex: /\bcarrefour\b/i, brand: 'Carrefour' },
+    { regex: /\bintermarch[ée]?\b/i, brand: 'Intermarché' },
+    { regex: /\bsuper\s*u\b/i, brand: 'Super U' },
+    { regex: /\bauchan\b/i, brand: 'Auchan' },
+    { regex: /\baldi\b/i, brand: 'Aldi' },
+    { regex: /\bnetto\b/i, brand: 'Netto' },
+    { regex: /\bcasino\b/i, brand: 'Casino' },
+    { regex: /\bmonoprix\b/i, brand: 'Monoprix' },
+    { regex: /\bcora\b/i, brand: 'Cora' },
+  ];
+
+  for (const candidate of brandPatterns) {
+    if (candidate.regex.test(source)) return candidate.brand;
+  }
+
+  return fallback?.trim() || 'Magasin';
+}
+
+function extractAddress(tags: Record<string, string>): string {
+  const parts = [tags['addr:housenumber'], tags['addr:street'], tags['addr:postcode'], tags['addr:city']]
+    .filter((value): value is string => Boolean(value && value.trim()));
+
+  return parts.join(' ');
+}
+
+function getElementCenter(element: any): { latitude: number; longitude: number } | null {
+  if (typeof element?.center?.lat === 'number' && typeof element?.center?.lon === 'number') {
+    return { latitude: element.center.lat, longitude: element.center.lon };
+  }
+
+  if (typeof element?.lat === 'number' && typeof element?.lon === 'number') {
+    return { latitude: element.lat, longitude: element.lon };
+  }
+
+  const geometry = Array.isArray(element?.geometry) ? element.geometry : [];
+  const points = geometry.filter((point: any) => typeof point?.lat === 'number' && typeof point?.lon === 'number');
+
+  if (points.length > 0) {
+    const averageLat = points.reduce((sum: number, point: any) => sum + point.lat, 0) / points.length;
+    const averageLon = points.reduce((sum: number, point: any) => sum + point.lon, 0) / points.length;
+    return { latitude: averageLat, longitude: averageLon };
+  }
+
+  if (element?.bounds) {
+    const minLat = Number(element.bounds.minlat);
+    const maxLat = Number(element.bounds.maxlat);
+    const minLon = Number(element.bounds.minlon);
+    const maxLon = Number(element.bounds.maxlon);
+
+    if (Number.isFinite(minLat) && Number.isFinite(maxLat) && Number.isFinite(minLon) && Number.isFinite(maxLon)) {
+      return {
+        latitude: (minLat + maxLat) / 2,
+        longitude: (minLon + maxLon) / 2,
+      };
+    }
+  }
+
+  return null;
+}
+
+function isRelevantOverpassStore(tags: Record<string, string | undefined>): boolean {
+  const shopValue = (tags.shop ?? '').toLowerCase();
+  const amenityValue = (tags.amenity ?? '').toLowerCase();
+  const combinedName = `${tags.name ?? ''} ${tags.brand ?? ''} ${tags.operator ?? ''}`.toLowerCase();
+
+  if (amenityValue === 'fuel') {
+    return false;
+  }
+
+  if (shopValue && !['supermarket', 'convenience'].includes(shopValue)) {
+    return false;
+  }
+
+  if (/(station|total|avia|esso|shell|eni|elan)/i.test(combinedName)) {
+    return false;
+  }
+
+  return shopValue === 'supermarket' || shopValue === 'convenience';
+}
+
+function mapOverpassElementToStore(element: any): Store | null {
+  const tags = element?.tags ?? {};
+  const name = tags.name?.trim() || tags.brand?.trim() || 'Magasin';
+
+  if (!isRelevantOverpassStore(tags)) {
+    return null;
+  }
+
+  const center = getElementCenter(element);
+  if (!center) {
+    return null;
+  }
+
+  const address = extractAddress(tags) || tags['addr:full'] || '';
+
+  return {
+    id: `osm-${element?.type}-${element?.id}`,
+    name,
+    brand: inferBrandFromName(name, tags.brand || tags.operator || tags.shop),
+    address,
+    latitude: center.latitude,
+    longitude: center.longitude,
+    hours: tags.opening_hours || 'Horaires non communiqués',
+  };
+}
+
+export async function getClosestStores(lat: number, lng: number, radius: number = 5000): Promise<Store[]> {
+  const roundedLat = Number(lat.toFixed(4));
+  const roundedLng = Number(lng.toFixed(4));
+  const cacheKey = `${roundedLat}:${roundedLng}:${Math.round(radius / 1000)}`;
+  const now = Date.now();
+  const cachedEntry = storeLookupCache[cacheKey];
+
+  if (cachedEntry && now - cachedEntry.timestamp < STORE_CACHE_TTL_MS) {
+    return cachedEntry.stores;
+  }
+
+  const query = `[out:json][timeout:25];(
+    node["shop"~"^(supermarket|convenience)$"](around:${radius},${lat},${lng});
+    way["shop"~"^(supermarket|convenience)$"](around:${radius},${lat},${lng});
+    relation["shop"~"^(supermarket|convenience)$"](around:${radius},${lat},${lng});
+  );out center;`;
+
+  try {
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+      body: new URLSearchParams({ data: query }).toString(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Overpass request failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    const stores = (data?.elements ?? [])
+      .map(mapOverpassElementToStore)
+      .filter((store: Store | null): store is Store => Boolean(store));
+
+    const uniqueStores = stores.filter(
+      (store: Store, index: number, allStores: Store[]) => allStores.findIndex((candidate: Store) => candidate.id === store.id) === index
+    );
+
+    const sortedStores = uniqueStores.sort((a: Store, b: Store) => a.name.localeCompare(b.name));
+
+    storeLookupCache[cacheKey] = {
+      timestamp: now,
+      stores: sortedStores,
+    };
+
+    return sortedStores.slice(0, 20);
+  } catch (error) {
+    console.warn('Overpass lookup failed', error);
+    return [];
+  }
 }
 
 export async function getProductPrices(productId: string): Promise<ProductPrice[]> {
@@ -693,24 +862,44 @@ export async function getMyProfile(): Promise<UserProfile> {
     .from('users_profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) throw error ?? new Error('Profil introuvable.');
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return {
+      id: user.id,
+      email: user.email ?? '',
+      displayName: 'Chasseur de Primes',
+      avatarUrl: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      plan: 'free',
+      totalSavings: 0,
+      totalPoints: 0,
+      sentinelLevel: 1,
+      referralCode: 'TEMP',
+      invitedCount: 0,
+      ambassadorGoal: 500,
+    };
+  }
 
   return {
     id: data.id,
-    email: data.email ?? '',
-    displayName: data.display_name,
+    email: data.email ?? user.email ?? '',
+    displayName: data.display_name ?? 'Chasseur de Primes',
     avatarUrl: data.avatar_url,
     createdAt: data.created_at ?? new Date().toISOString(),
     updatedAt: data.updated_at ?? new Date().toISOString(),
     plan: data.plan as any,
-    totalSavings: Number(data.total_savings),
-    totalPoints: data.total_points,
-    sentinelLevel: data.sentinel_level,
-    referralCode: data.referral_code,
-    invitedCount: data.invited_count,
-    ambassadorGoal: data.ambassador_goal,
+    totalSavings: Number(data.total_savings ?? 0),
+    totalPoints: data.total_points ?? 0,
+    sentinelLevel: data.sentinel_level ?? 1,
+    referralCode: data.referral_code ?? 'TEMP',
+    invitedCount: data.invited_count ?? 0,
+    ambassadorGoal: data.ambassador_goal ?? 500,
   };
 }
 

@@ -21,6 +21,22 @@ import { getMyProfile } from '../services/api';
 import { UserProfile } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
+const buildFallbackProfile = (): UserProfile => ({
+  id: 'temp-profile',
+  email: 'guest@paniermalin.app',
+  displayName: 'Chasseur de Primes',
+  avatarUrl: undefined,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  plan: 'free',
+  totalSavings: 0,
+  totalPoints: 0,
+  referralCode: 'TEMP',
+  invitedCount: 0,
+  sentinelLevel: 1,
+  ambassadorGoal: 500,
+});
+
 interface Props {
   onNavigate: (tab: TabKey) => void;
   onViewBaskets: () => void;
@@ -44,9 +60,12 @@ export default function ProfilePlaceholderScreen({
     let isMounted = true;
     getMyProfile()
       .then((data) => {
-        if (isMounted) setProfile(data);
+        if (isMounted) setProfile(data ?? buildFallbackProfile());
       })
-      .catch((err) => console.error('[ProfileScreen] getMyProfile failed', err))
+      .catch((err) => {
+        console.warn('[ProfileScreen] getMyProfile failed, using fallback', err);
+        if (isMounted) setProfile(buildFallbackProfile());
+      })
       .finally(() => {
         if (isMounted) setLoading(false);
       });

@@ -19,6 +19,7 @@ export default function TabsLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="scanner" />
+      <Stack.Screen name="map" />
       <Stack.Screen name="community" />
       <Stack.Screen name="lists" />
       <Stack.Screen name="profile" />

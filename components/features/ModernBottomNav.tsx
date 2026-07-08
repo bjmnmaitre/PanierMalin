@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography, shadows } from '@/design';
 import { triggerSelection } from '@/utils/haptics';
 
-export type TabKey = 'home' | 'scanner' | 'lists' | 'community' | 'profile';
+export type TabKey = 'home' | 'scanner' | 'map' | 'lists' | 'community' | 'profile';
 
 interface TabConfig {
   key: TabKey;
@@ -21,6 +21,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { key: 'home', label: 'Accueil', icon: 'home', iconActive: 'home' },
   { key: 'scanner', label: 'Scanner', icon: 'qr-code-scanner', iconActive: 'qr-code-scanner' },
+  { key: 'map', label: 'Carte', icon: 'map', iconActive: 'map' },
   { key: 'lists', label: 'Listes', icon: 'list-alt', iconActive: 'list-alt' },
   { key: 'community', label: 'Communauté', icon: 'people-outline', iconActive: 'people' },
   { key: 'profile', label: 'Profil', icon: 'person-outline', iconActive: 'person' },

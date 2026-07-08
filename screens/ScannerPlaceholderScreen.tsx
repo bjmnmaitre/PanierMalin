@@ -1,54 +1,39 @@
-// screens/ScannerPlaceholderScreen.tsx
-//
-// Écran honnête : la vraie fonctionnalité caméra (expo-camera + détection
-// EAN-8/EAN-13) n'est pas encore implémentée. Ce stub existe pour que la
-// navigation soit fonctionnelle de bout en bout pendant le développement.
-// À remplacer par le vrai composant scanner (voir le prompt Lot 3 du
-// dossier Stitch pour le design de référence).
-
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
-import { Typography, Radii } from '../theme/typography';
-import BottomNav, { TabKey } from '../components/BottomNav';
+import { Typography, Radii, Shadows } from '../theme/typography';
 
-interface Props {
-  onNavigate: (tab: TabKey) => void;
-  onViewDemoProduct: () => void;
+export type TabKey = 'home' | 'map' | 'scanner' | 'profile' | 'community';
+
+interface ScannerPlaceholderScreenProps {
+  onNavigate?: (tab: TabKey) => void;
+  onViewDemoProduct?: () => void;
 }
 
-export default function ScannerPlaceholderScreen({ onNavigate, onViewDemoProduct }: Props) {
+export default function ScannerPlaceholderScreen({
+  onNavigate,
+  onViewDemoProduct,
+}: ScannerPlaceholderScreenProps) {
   return (
-    <View style={styles.root}>
-      <View style={styles.center}>
-        <MaterialIcons name="qr-code-scanner" size={64} color={Colors.border} />
-        <Text style={[Typography.h2, { marginTop: 16, textAlign: 'center' }]}>
-          Scanner pas encore implémenté
-        </Text>
-        <Text style={[Typography.bodyMd, { color: Colors.textSecondary, textAlign: 'center', marginTop: 8, paddingHorizontal: 32 }]}>
-          La caméra et la détection de code-barre arrivent dans une prochaine itération
-          (expo-camera + expo-barcode-scanner).
-        </Text>
-        <TouchableOpacity style={styles.demoButton} onPress={onViewDemoProduct} activeOpacity={0.85}>
-          <Text style={[Typography.bodyLg, { color: Colors.white }]}>
-            Voir un exemple de fiche produit
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <BottomNav active="scanner" onNavigate={onNavigate} />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          <View style={[styles.iconContainer, Shadows.active]}>
+            <Ionicons name="barcode-outline" size={48} color={Colors.primary} />
+          </View>
+          <Text style={[Typography.h2, { marginTop: 24, marginBottom: 12 }]}>Scan produits</Text>
+          <Text style={[Typography.bodySm, { color: Colors.textSecondary, textAlign: 'center' }]}>Scannez les codes-barres pour comparer instantanément les prix et trouver les meilleures offres.</Text>
+          <Text style={[Typography.labelSm, { marginTop: 32, color: Colors.secondary, textAlign: 'center', fontStyle: 'italic' }]}>⏰ Cette fonctionnalité arrive bientôt</Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  demoButton: {
-    marginTop: 24,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: Radii.button,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  content: { alignItems: 'center' },
+  iconContainer: { backgroundColor: Colors.surface, padding: 32, borderRadius: Radii.card },
 });
