@@ -2,7 +2,6 @@
 
 # dependencies
 node_modules/
-jspm_packages/
 
 # Expo
 .expo/
@@ -18,36 +17,24 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
-*.apk
-*.aab
-*.bundle
-*.dmg
 
 # Metro
 .metro-health-check*
 
-# debug / cache
+# debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-.eslintcache
-.tsconfig.tsbuildinfo
 
-# macOS / Windows
+# macOS
 .DS_Store
 *.pem
-._*
-Thumbs.db
-ehthumbs.db
-Desktop.ini
 
-# local env files (Sécurité des clés API)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# local env files
 .env*.local
+
+# typescript
+*.tsbuildinfo
 
 # generated native folders
 /ios

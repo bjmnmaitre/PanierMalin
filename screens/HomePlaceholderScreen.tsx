@@ -1,58 +1,243 @@
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
-import { Typography, Radii, Shadows } from '../theme/typography';
+import React from 'react';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
+import { colors, spacing, radii, typography } from '@/design';
+import { Card } from '@/components/primitives';
+import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAsync } from '@/hooks/useAsync';
+import { getMyLists } from '@/services/api';
+import { formatPrice } from '@/utils/formatters';
 
-export type TabKey = 'home' | 'map' | 'scanner' | 'profile' | 'community';
-
-interface HomePlaceholderScreenProps {
-  onNavigate?: (tab: TabKey) => void;
-  onScan?: () => void;
-  onViewBaskets?: () => void;
-  onOpenMap?: () => void;
-  onSearchSubmit?: (naturalQuery: string) => void;
+export interface HomePlaceholderScreenProps {
+  /** Navigation vers un autre onglet (barre de navigation + raccourcis) */
+  onNavigate: (tab: TabKey) => void;
+  /** Ouvre le flux d'optimisation de panier (route hors-onglets `/optimize`) */
+  onOptimize: () => void;
 }
 
-export default function HomePlaceholderScreen({
-  onNavigate,
-  onScan,
-  onViewBaskets,
-  onOpenMap,
-  onSearchSubmit,
-}: HomePlaceholderScreenProps) {
+interface QuickAction {
+  key: string;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  backgroundColor: string;
+  onPress: () => void;
+}
+
+export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePlaceholderScreenProps) {
+  const insets = useSafeAreaInsets();
+  const { profile, isLoading: isProfileLoading } = useAuth();
+
+  const {
+    data: lists,
+    isLoading: isListsLoading,
+  } = useAsync(getMyLists);
+
+  const firstName = profile?.displayName?.trim().split(' ')[0];
+  const greeting = firstName ? `Bonjour ${firstName} 👋` : 'Bonjour 👋';
+
+  const savingsLabel = isProfileLoading || !profile ? '…' : formatPrice(profile.totalSavings);
+  const activeListsCount = isListsLoading || !lists
+    ? '…'
+    : String(lists.filter((list) => !list.isArchived).length);
+  const pointsLabel = isProfileLoading || !profile ? '…' : String(profile.totalPoints);
+
+  const quickActions: QuickAction[] = [
+    {
+      key: 'optimize',
+      title: 'Optimiser mon panier',
+      subtitle: 'Trouver le magasin le moins cher autour de vous',
+      icon: 'tune',
+      backgroundColor: colors.primary,
+      onPress: onOptimize,
+    },
+    {
+      key: 'scanner',
+      title: 'Scanner un produit',
+      subtitle: 'Comparer les prix et vérifier la fraîcheur',
+      icon: 'qr-code-scanner',
+      backgroundColor: colors.secondary,
+      onPress: () => onNavigate('scanner'),
+    },
+    {
+      key: 'map',
+      title: 'Carte des supermarchés',
+      subtitle: 'Voir les magasins partenaires à proximité',
+      icon: 'map',
+      backgroundColor: colors.tertiary,
+      onPress: () => onNavigate('map'),
+    },
+    {
+      key: 'community',
+      title: 'Communauté & défis',
+      subtitle: 'Partager vos bons plans avec la communauté',
+      icon: 'people-outline',
+      backgroundColor: colors.secondary_dark,
+      onPress: () => onNavigate('community'),
+    },
+  ];
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing[4] }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
-          <Text style={[Typography.h1, { color: Colors.textPrimary }]}>Bonjour 👋</Text>
-          <Text style={[Typography.bodyMd, { color: Colors.textSecondary }]}>Prêt à faire des économies aujourd'hui ?</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
+          <Text style={styles.subtitle}>Prêt à faire des économies aujourd'hui ?</Text>
         </View>
-        <View style={[styles.mainCard, Shadows.active]}>
-          <Ionicons name="trending-down-outline" size={32} color={Colors.white} />
-          <Text style={[Typography.h2, { color: Colors.white, marginTop: 12 }]}>-15% sur votre panier</Text>
-          <Text style={[Typography.bodySm, { color: Colors.white, opacity: 0.9, marginTop: 4 }]}>En moyenne constatée cette semaine par rapport aux supermarchés traditionnels.</Text>
-        </View>
-        <Text style={[Typography.h3, { marginBottom: 12, marginTop: 8 }]}>Vos raccourcis</Text>
-        <View style={styles.grid}>
-          <TouchableOpacity style={[styles.card, Shadows.soft]} onPress={onOpenMap}>
-            <Ionicons name="map-outline" size={24} color={Colors.primary} />
-            <Text style={[Typography.labelSm, { marginTop: 8 }]}>Carte des prix</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, Shadows.soft]} onPress={onViewBaskets}>
-            <Ionicons name="list-outline" size={24} color={Colors.secondary} />
-            <Text style={[Typography.labelSm, { marginTop: 8 }]}>Mes listes</Text>
-          </TouchableOpacity>
-        </View>
+
+        <Card
+          padding="lg"
+          shadow="lg"
+          backgroundColor={colors.primary}
+          borderRadius={radii['2xl']}
+          style={styles.savingsCard}
+        >
+          <Text style={styles.savingsLabel}>Vos économies ce mois-ci</Text>
+          <Text style={styles.savingsValue}>{savingsLabel}</Text>
+          <View style={styles.divider} />
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{activeListsCount}</Text>
+              <Text style={styles.statLabel}>Listes actives</Text>
+            </View>
+            <View style={styles.verticalDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{pointsLabel}</Text>
+              <Text style={styles.statLabel}>Points fidélité</Text>
+            </View>
+          </View>
+        </Card>
+
+        <Text style={styles.sectionTitle}>Fonctionnalités malines</Text>
+
+        {quickActions.map((action) => (
+          <Card
+            key={action.key}
+            padding="md"
+            shadow="sm"
+            backgroundColor={action.backgroundColor}
+            borderRadius={radii.xl}
+            onPress={action.onPress}
+            style={styles.actionCard}
+          >
+            <View style={styles.actionRow}>
+              <View style={styles.actionIconContainer}>
+                <MaterialIcons name={action.icon} size={28} color={colors.white} />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionTitle}>{action.title}</Text>
+                <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color="rgba(255,255,255,0.7)" />
+            </View>
+          </Card>
+        ))}
       </ScrollView>
-    </SafeAreaView>
+
+      <ModernBottomNav active="home" onNavigate={onNavigate} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  scrollContent: { padding: 24 },
-  header: { marginBottom: 24 },
-  mainCard: { backgroundColor: Colors.primary, borderRadius: Radii.card, padding: 24, marginBottom: 24 },
-  grid: { flexDirection: 'row', gap: 16 },
-  card: { flex: 1, backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 16, alignItems: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.secondary,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[8],
+  },
+  header: {
+    marginBottom: spacing[6],
+  },
+  greeting: {
+    ...typography.h1,
+    color: colors.text.primary,
+  },
+  subtitle: {
+    ...typography.bodyMedium,
+    color: colors.text.secondary,
+    marginTop: spacing[1],
+  },
+  savingsCard: {
+    marginBottom: spacing[6],
+  },
+  savingsLabel: {
+    ...typography.bodySmall,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  savingsValue: {
+    ...typography.displaySmall,
+    color: colors.white,
+    marginTop: spacing[1],
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    marginVertical: spacing[4],
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    ...typography.h3,
+    color: colors.white,
+  },
+  statLabel: {
+    ...typography.captionLarge,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: spacing[1],
+  },
+  verticalDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    marginBottom: spacing[3],
+  },
+  actionCard: {
+    marginBottom: spacing[3],
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionIconContainer: {
+    width: 46,
+    height: 46,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing[4],
+  },
+  actionTextContainer: {
+    flex: 1,
+  },
+  actionTitle: {
+    ...typography.labelLarge,
+    color: colors.white,
+  },
+  actionSubtitle: {
+    ...typography.captionLarge,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 2,
+  },
 });
