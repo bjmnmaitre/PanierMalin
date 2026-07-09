@@ -1,12 +1,11 @@
-// app/_navHelpers.ts
 import { TabKey } from '../components/BottomNav';
 
-// Mappe les clés d'onglet (utilisées par BottomNav) vers les vraies routes expo-router.
 export const TAB_ROUTES: Record<TabKey, string> = {
   home: '/(tabs)',
   scanner: '/(tabs)/scanner',
-  map: '/(tabs)/map',
-  community: '/(tabs)/community',
+  map: '/map',
   lists: '/(tabs)/lists',
+  community: '/(tabs)/community',
   profile: '/(tabs)/profile',
+  radar: '/(tabs)/radar', // Ajout de la route pour le radar
 };
