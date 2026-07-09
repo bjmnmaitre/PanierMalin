@@ -2,7 +2,15 @@
   "expo": {
     "name": "PanierMalin",
     "scheme": "panier-malin",
-"plugins": ["expo-router"],
+"plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PanierMalin a besoin d'accéder à votre caméra pour scanner les codes-barres des produits."
+        }
+      ]
+    ],
     "slug": "PanierMalin",
     "version": "1.0.0",
     "orientation": "portrait",
