@@ -1,271 +1,262 @@
 // screens/SavedBasketsScreen.tsx
-// 
-// RÈGLE DE TRAITEMENT : Fichier intégral et autonome.
-// Ce composant se connecte proprement au service d'API Supabase
-// tout en assurant la fluidité visuelle de l'analyse intelligente.
+//
+// Écran "Mes paniers habituels" (paniers-modèles réoptimisables en un tap).
+// RÈGLE DE TRAITEMENT : fichier intégral et autonome, aucune troncature.
+//
+// Migration complète de `theme/` + `BottomNav` legacy vers `design/` +
+// `ModernBottomNav` + primitives (Card, Button, Badge), avec le même
+// bandeau de gamification que screens/MyListsScreen.tsx
+// (GamificationBanner) — emplacement visuel dédié niveau/points/série,
+// comme convenu.
+//
+// Correction au passage : le bouton "Lancer l'optimisation" simulait un
+// calcul local avec des setTimeout (1.2s "Analyse intelligente...", puis
+// "Calcul terminé !") sans jamais rien calculer réellement. Le vrai calcul
+// (services/api.ts: optimizeBasket / fetchOptimizationData) s'exécute déjà
+// sur l'écran app/optimize.tsx. On délègue donc simplement la navigation
+// via onOptimize(basketId) au lieu d'imiter un faux calcul ici.
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
-import { Typography, Radii, Shadows } from '../theme/typography';
-import BottomNav, { TabKey } from '../components/BottomNav';
-import { getSavedBaskets } from '../services/api';
-import { SavedBasketData } from '../types';
+import { colors, spacing, radii, typography } from '@/design';
+import { Card, Button } from '@/components/primitives';
+import { GamificationBanner } from '@/components/features';
+import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAsync } from '@/hooks/useAsync';
+import { getSavedBaskets } from '@/services/api';
+import type { SavedBasketData } from '@/types';
 
-type OptimizeStatus = 'idle' | 'loading' | 'done';
-
-const ICON_STYLE: Record<string, { bg: string; color: string }> = {
-  'shopping-basket': { bg: Colors.primaryLight, color: Colors.primary },
-  celebration: { bg: Colors.secondaryLight, color: Colors.secondary },
-  'bakery-dining': { bg: Colors.tertiaryLight, color: Colors.tertiary },
-};
-const DEFAULT_ICON_STYLE = { bg: Colors.primaryLight, color: Colors.primary };
-
-interface Props {
+export interface SavedBasketsScreenProps {
+  /** Navigation vers un autre onglet (barre de navigation) */
   onNavigate: (tab: TabKey) => void;
   onEditBasket: (basketId: string) => void;
+  /** Lance l'optimisation réelle (navigation vers app/optimize.tsx) */
   onOptimize: (basketId: string) => void;
   onCreateBasket: () => void;
 }
 
-export default function SavedBasketsScreen({ 
-  onNavigate, 
-  onEditBasket, 
-  onOptimize, 
-  onCreateBasket 
-}: Props) {
-  const [baskets, setBaskets] = useState<SavedBasketData[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [statuses, setStatuses] = useState<Record<string, OptimizeStatus>>({});
+const ICON_STYLES: Record<string, { background: string; color: string }> = {
+  'shopping-basket': { background: colors.primary_light, color: colors.primary },
+  celebration: { background: colors.secondary_light, color: colors.secondary },
+  'bakery-dining': { background: colors.tertiary_light, color: colors.tertiary },
+};
+const DEFAULT_ICON_STYLE = { background: colors.primary_light, color: colors.primary };
 
-  useEffect(() => {
-    let isMounted = true;
-    getSavedBaskets()
-      .then((data) => {
-        if (isMounted) setBaskets(data);
-      })
-      .catch((err) => console.error('[SavedBasketsScreen] getSavedBaskets failed', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-    return () => { isMounted = false; };
-  }, []);
+function resolveIconName(icon: string): keyof typeof MaterialIcons.glyphMap {
+  return (icon && icon in MaterialIcons.glyphMap ? icon : 'shopping-basket') as keyof typeof MaterialIcons.glyphMap;
+}
 
-  const handleOptimizePress = (basketId: string) => {
-    setStatuses((prev) => ({ ...prev, [basketId]: 'loading' }));
+export default function SavedBasketsScreen({ onNavigate, onEditBasket, onOptimize, onCreateBasket }: SavedBasketsScreenProps) {
+  const insets = useSafeAreaInsets();
+  const { profile, isLoading: isProfileLoading } = useAuth();
 
-    // Simulation de l'appel d'optimisation
-    setTimeout(() => {
-      setStatuses((prev) => ({ ...prev, [basketId]: 'done' }));
-      onOptimize(basketId);
-      
-      setTimeout(() => {
-        setStatuses((prev) => ({ ...prev, [basketId]: 'idle' }));
-      }, 2000);
-    }, 1200);
-  };
+  const { data: baskets, isLoading: isBasketsLoading } = useAsync<SavedBasketData[]>(getSavedBaskets);
 
   return (
-    <View style={styles.root}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <Text style={[Typography.h1, { color: Colors.textPrimary }]}>Mes paniers habituels</Text>
-          <TouchableOpacity style={styles.notifButton} activeOpacity={0.7}>
-            <MaterialIcons name="notifications-none" size={22} color={Colors.textPrimary} />
-          </TouchableOpacity>
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing[4] }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Mes paniers habituels</Text>
+          <Text style={styles.subtitle}>Sélectionne un panier et lance l'optimisation en un tap</Text>
         </View>
-        <Text style={[Typography.bodyMd, { color: Colors.textSecondary, marginTop: 4 }]}>
-          Sélectionne et lance l'optimisation en un tap
-        </Text>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: 40 }} />
+        <GamificationBanner
+          sentinelLevel={profile?.sentinelLevel}
+          totalPoints={profile?.totalPoints}
+          loading={isProfileLoading}
+        />
+
+        {isBasketsLoading ? (
+          <ActivityIndicator color={colors.primary} style={styles.loadingIndicator} />
+        ) : !baskets || baskets.length === 0 ? (
+          <Text style={styles.emptyText}>
+            Aucun panier habituel pour l'instant — crée-en un pour lancer l'optimisation en un tap la prochaine fois.
+          </Text>
         ) : (
-          baskets.map((basket: SavedBasketData) => {
-            const status = statuses[basket.id] ?? 'idle';
-            const iconStyle = ICON_STYLE[basket.icon] ?? DEFAULT_ICON_STYLE;
-            
-            // Sécurisation stricte du nom de l'icône pour l'affichage
-            const iconName = (basket.icon && basket.icon in MaterialIcons.glyphMap
-              ? basket.icon
-              : 'shopping-basket') as keyof typeof MaterialIcons.glyphMap;
+          <View style={styles.basketsContainer}>
+            {baskets.map((basket) => {
+              const iconStyle = ICON_STYLES[basket.icon] ?? DEFAULT_ICON_STYLE;
 
-            return (
-              <View key={basket.id} style={styles.basketCard}>
-                <View style={styles.basketTopRow}>
-                  <View style={styles.basketInfoRow}>
-                    <View style={[styles.iconBox, { backgroundColor: iconStyle.bg }]}>
-                      <MaterialIcons 
-                        name={iconName} 
-                        size={24} 
-                        color={iconStyle.color} 
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[Typography.bodyLg, { fontWeight: '600', color: Colors.textPrimary }]}>
-                        {basket.name}
-                      </Text>
-                      <View style={styles.itemCountRow}>
-                        <MaterialIcons name="format-list-bulleted" size={14} color={Colors.textSecondary} />
-                        <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-                          {basket.itemCount} articles
+              return (
+                <Card key={basket.id} padding="md" shadow="sm" style={styles.basketCard}>
+                  <View style={styles.basketTopRow}>
+                    <View style={styles.basketInfoRow}>
+                      <View style={[styles.iconBox, { backgroundColor: iconStyle.background }]}>
+                        <MaterialIcons name={resolveIconName(basket.icon)} size={24} color={iconStyle.color} />
+                      </View>
+                      <View style={styles.basketTextBlock}>
+                        <Text style={styles.basketName} numberOfLines={1}>
+                          {basket.name}
                         </Text>
-                        {basket.isShared && (
-                          <>
-                            <Text style={{ color: Colors.border, marginHorizontal: 2 }}>•</Text>
-                            <MaterialIcons name="group" size={14} color={Colors.tertiary} />
-                            <Text style={[Typography.caption, { color: Colors.tertiary, fontWeight: '500' }]}>
-                              {basket.collaboratorCount} membres
-                            </Text>
-                          </>
-                        )}
+                        <View style={styles.basketMetaRow}>
+                          <MaterialIcons name="format-list-bulleted" size={14} color={colors.text.secondary} />
+                          <Text style={styles.basketMetaText}>
+                            {basket.itemCount} article{basket.itemCount > 1 ? 's' : ''}
+                          </Text>
+                          {basket.isShared && (
+                            <>
+                              <View style={styles.dotSeparator} />
+                              <MaterialIcons name="group" size={14} color={colors.tertiary} />
+                              <Text style={styles.basketSharedText}>
+                                {basket.collaboratorCount} membre{basket.collaboratorCount > 1 ? 's' : ''}
+                              </Text>
+                            </>
+                          )}
+                        </View>
                       </View>
                     </View>
-                  </View>
-                  
-                  <TouchableOpacity onPress={() => onEditBasket(basket.id)} activeOpacity={0.7}>
-                    <Text style={[Typography.bodyMd, { color: Colors.primary, fontWeight: '500' }]}>
-                      Modifier
-                    </Text>
-                  </TouchableOpacity>
-                </View>
 
-                {/* Bouton Action d'Optimisation */}
-                <TouchableOpacity
-                  style={[
-                    styles.optimizeButton,
-                    status === 'loading' && { backgroundColor: Colors.primary + 'B3' }, // Opacité 70%
-                    status === 'done' && { backgroundColor: Colors.tertiary },
-                  ]}
-                  onPress={() => handleOptimizePress(basket.id)}
-                  disabled={status !== 'idle'}
-                  activeOpacity={0.85}
-                >
-                  {status === 'idle' && (
-                    <>
-                      <MaterialIcons name="bolt" size={20} color={Colors.white} />
-                      <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
-                        Lancer l'optimisation
-                      </Text>
-                    </>
-                  )}
-                  {status === 'loading' && (
-                    <>
-                      <ActivityIndicator size="small" color={Colors.white} />
-                      <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
-                        Analyse intelligente...
-                      </Text>
-                    </>
-                  )}
-                  {status === 'done' && (
-                    <>
-                      <MaterialIcons name="check-circle" size={20} color={Colors.white} />
-                      <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
-                        Calcul terminé !
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })
+                    <Pressable
+                      onPress={() => onEditBasket(basket.id)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Modifier ${basket.name}`}
+                    >
+                      <Text style={styles.editLink}>Modifier</Text>
+                    </Pressable>
+                  </View>
+
+                  <Button
+                    label="Lancer l'optimisation"
+                    icon="bolt"
+                    variant="primary"
+                    fullWidth
+                    onPress={() => onOptimize(basket.id)}
+                  />
+                </Card>
+              );
+            })}
+          </View>
         )}
 
         <Text style={styles.hintText}>
           Tes paniers habituels te permettent de comparer les prix de tes indispensables dans tous les magasins alentours en un clic.
         </Text>
-
-        <View style={{ height: 160 }} />
       </ScrollView>
 
-      {/* Bouton global de création */}
-      <TouchableOpacity style={styles.createButton} onPress={onCreateBasket} activeOpacity={0.9}>
-        <MaterialIcons name="add" size={22} color={Colors.white} />
-        <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
-          Créer un panier habituel
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.createButtonBar}>
+        <Button label="Créer un panier habituel" icon="add" variant="primary" fullWidth onPress={onCreateBasket} />
+      </View>
 
-      <BottomNav active="lists" onNavigate={onNavigate} />
+      <ModernBottomNav active="lists" onNavigate={onNavigate} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
-  header: { 
-    paddingHorizontal: 16, 
-    paddingTop: 16, 
-    paddingBottom: 12, 
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.secondary,
   },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  notifButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
+  scrollView: {
+    flex: 1,
   },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[6],
+  },
+  header: {
+    marginBottom: spacing[4],
+  },
+  title: {
+    ...typography.h1,
+    color: colors.text.primary,
+  },
+  subtitle: {
+    ...typography.bodyMedium,
+    color: colors.text.secondary,
+    marginTop: spacing[1],
+  },
+  loadingIndicator: {
+    marginVertical: spacing[6],
+  },
+  emptyText: {
+    ...typography.bodyMedium,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing[6],
+  },
+  basketsContainer: {
+    gap: spacing[3],
+  },
   basketCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.card,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.soft,
+    width: '100%',
   },
-  basketTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  basketInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  iconBox: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  itemCountRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  optimizeButton: {
+  basketTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing[4],
+  },
+  basketInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing[3],
+    flex: 1,
+    paddingRight: spacing[2],
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    height: 48,
-    borderRadius: Radii.button,
-    ...Shadows.soft,
+  },
+  basketTextBlock: {
+    flex: 1,
+  },
+  basketName: {
+    ...typography.labelLarge,
+    color: colors.text.primary,
+  },
+  basketMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    marginTop: spacing[1],
+  },
+  basketMetaText: {
+    ...typography.captionLarge,
+    color: colors.text.secondary,
+  },
+  basketSharedText: {
+    ...typography.captionLarge,
+    color: colors.tertiary,
+    fontWeight: '600',
+  },
+  dotSeparator: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.text.tertiary,
+    marginHorizontal: 2,
+  },
+  editLink: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '600',
   },
   hintText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
+    ...typography.captionLarge,
+    color: colors.text.secondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 24,
+    paddingHorizontal: spacing[6],
+    paddingTop: spacing[5],
     lineHeight: 16,
   },
-  createButton: {
-    position: 'absolute',
-    bottom: 92,
-    left: 16,
-    right: 16,
-    height: 52,
-    backgroundColor: Colors.primary,
-    borderRadius: Radii.button,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    ...Shadows.active,
-    zIndex: 10,
+  createButtonBar: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[3],
+    backgroundColor: colors.bg.secondary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
   },
 });
