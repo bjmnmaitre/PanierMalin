@@ -1,11 +1,5 @@
-// services/api.ts
-//
-// RÈGLE D'ARCHITECTURE : les écrans n'appellent JAMAIS supabase directement.
-// Ils appellent toujours une fonction d'ici. Pour brancher le vrai backend,
-// on modifie UNIQUEMENT ce fichier — aucun écran n'a besoin de changer.
-
 import { apiClient } from './api/client';
-const supabase = apiClient.getSupabase(); // Réutilise l'instance sécurisée globale
+const supabase = apiClient.getSupabase();
 import {
   Product,
   ProductWithOffers,
@@ -19,9 +13,9 @@ import {
   LeaderboardEntry,
   UserProfile,
   EventData,
+  OnboardingProfileInput,
 } from '../types';
 
-// Flags par domaine — Tous désactivés pour basculer sur le vrai Supabase !
 const USE_MOCK_PRODUCTS = false;
 const USE_MOCK_PROFILE = false;
 const USE_MOCK_LISTS = false;
@@ -32,24 +26,11 @@ const USE_MOCK_LEADERBOARD = false;
 const USE_MOCK_EVENTS = false;
 const USE_MOCK_PRICE_ACTIONS = false;
 
-// ============================================================
-// FONCTIONS INJECTÉES POUR LES NOUVEAUX ÉCRANS (OPTIMIZE & SHOPPING)
-// ============================================================
-
-/**
- * Récupère les données d'optimisation pour une liste donnée.
- * Intègre le fallback sur la fonction native 'optimizeBasket' déjà présente.
- */
 export async function fetchOptimizationData(listId: string): Promise<OptimizationResult> {
   console.log(`[API] Appel fetchOptimizationData pour la liste : ${listId}`);
-  // On réutilise la puissance de ton algorithme d'optimisation natif déjà écrit plus bas
   return optimizeBasket(listId);
 }
 
-/**
- * Enregistre ou met à jour le prix signalé par un utilisateur en rayon (Crowdsourcing)
- * Insère la contribution et l'activité communautaire associée.
- */
 export async function updateCrowdsourcedPrice(
   productId: string,
   storeId: string,
@@ -81,10 +62,6 @@ export async function updateCrowdsourcedPrice(
   }]);
 }
 
-// ============================================================
-// PRODUITS & PRIX
-// ============================================================
-
 export async function getProductByEan(ean: string): Promise<ProductWithOffers | null> {
   const { data: product, error: productError } = await supabase
     .from('products')
@@ -108,13 +85,13 @@ export async function getProductByEan(ean: string): Promise<ProductWithOffers | 
     name: product.name,
     brand: product.brand,
     category: product.category,
-    nutriscore: product.nutriscore as any, // Sécurité TypeScript pour l'enum Nutriscore
+    nutriscore: product.nutriscore as any,
     imageUrl: product.image_url,
     offers: (prices ?? []).map((p: any) => ({
       id: p.store_id,
       storeId: p.store_id,
       storeName: p.stores?.name ?? 'Magasin inconnu',
-      chain: (p.stores?.chain ?? 'leclerc') as any, // Sécurité TypeScript pour l'enum StoreChain
+      chain: (p.stores?.chain ?? 'leclerc') as any,
       logoUri: p.stores?.logo_uri ?? '',
       distanceKm: 0,
       price: Number(p.price),
@@ -199,17 +176,9 @@ function isRelevantOverpassStore(tags: Record<string, string | undefined>): bool
   const amenityValue = (tags.amenity ?? '').toLowerCase();
   const combinedName = `${tags.name ?? ''} ${tags.brand ?? ''} ${tags.operator ?? ''}`.toLowerCase();
 
-  if (amenityValue === 'fuel') {
-    return false;
-  }
-
-  if (shopValue && !['supermarket', 'convenience'].includes(shopValue)) {
-    return false;
-  }
-
-  if (/(station|total|avia|esso|shell|eni|elan)/i.test(combinedName)) {
-    return false;
-  }
+  if (amenityValue === 'fuel') return false;
+  if (shopValue && !['supermarket', 'convenience'].includes(shopValue)) return false;
+  if (/(station|total|avia|esso|shell|eni|elan)/i.test(combinedName)) return false;
 
   return shopValue === 'supermarket' || shopValue === 'convenience';
 }
@@ -218,14 +187,10 @@ function mapOverpassElementToStore(element: any): Store | null {
   const tags = element?.tags ?? {};
   const name = tags.name?.trim() || tags.brand?.trim() || 'Magasin';
 
-  if (!isRelevantOverpassStore(tags)) {
-    return null;
-  }
+  if (!isRelevantOverpassStore(tags)) return null;
 
   const center = getElementCenter(element);
-  if (!center) {
-    return null;
-  }
+  if (!center) return null;
 
   const address = extractAddress(tags) || tags['addr:full'] || '';
 
@@ -260,15 +225,11 @@ export async function getClosestStores(lat: number, lng: number, radius: number 
   try {
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body: new URLSearchParams({ data: query }).toString(),
     });
 
-    if (!response.ok) {
-      throw new Error(`Overpass request failed with ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Overpass request failed with ${response.status}`);
 
     const data = await response.json();
     const stores = (data?.elements ?? [])
@@ -331,7 +292,7 @@ export async function searchProducts(query: string): Promise<Product[]> {
     name: row.name,
     brand: row.brand,
     category: row.category,
-    nutriscore: row.nutriscore as any, // Sécurité TypeScript
+    nutriscore: row.nutriscore as any,
     imageUrl: row.image_url,
   }));
 }
@@ -398,10 +359,6 @@ export async function reportDifferentPrice(
   }]);
 }
 
-// ============================================================
-// LISTES DE COURSES
-// ============================================================
-
 export async function getMyLists(): Promise<ShoppingList[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Aucun utilisateur connecté.');
@@ -462,6 +419,53 @@ export async function getMyLists(): Promise<ShoppingList[]> {
       isShared: list.is_shared || listCollabs.length > 0,
       isArchived: list.is_archived,
       collaboratorAvatars,
+      createdAt: list.created_at,
+    };
+  });
+}
+
+export async function getArchivedLists(): Promise<ShoppingList[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
+
+  const { data: lists, error: listsError } = await supabase
+    .from('shopping_lists')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('is_archived', true)
+    .order('created_at', { ascending: false });
+
+  if (listsError) throw listsError;
+  if (!lists || lists.length === 0) return [];
+
+  const listIds = lists.map((l: any) => l.id);
+
+  const { data: items, error: itemsError } = await supabase
+    .from('list_items')
+    .select('list_id, qty, checked, price')
+    .in('list_id', listIds);
+
+  if (itemsError) throw itemsError;
+
+  return lists.map((list: any) => {
+    const listItems = (items ?? []).filter((it: any) => it.list_id === list.id);
+    const itemCount = listItems.length;
+    const doneCount = listItems.filter((it: any) => it.checked).length;
+    const estimatedTotal = listItems.reduce(
+      (sum: number, it: any) => sum + (Number(it.price) || 0) * Number(it.qty),
+      0
+    );
+
+    return {
+      id: list.id,
+      name: list.name,
+      itemCount,
+      doneCount,
+      estimatedTotal,
+      isShared: Boolean(list.is_shared),
+      isArchived: true,
+      collaboratorAvatars: [],
+      createdAt: list.created_at,
     };
   });
 }
@@ -559,10 +563,6 @@ export async function deleteListItem(itemId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ============================================================
-// PANIERS HABITUELS
-// ============================================================
-
 export async function getSavedBaskets(): Promise<SavedBasketData[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Aucun utilisateur connecté.');
@@ -607,10 +607,6 @@ export async function getSavedBaskets(): Promise<SavedBasketData[]> {
   });
 }
 
-// ============================================================
-// OPTIMISATION DU PANIER
-// ============================================================
-
 interface StoreWithItems {
   id: string;
   name: string;
@@ -635,8 +631,6 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
     };
   }
 
-  // Typage explicite en string[] pour éviter toute inférence en 'unknown'
-  // lors de l'utilisation de ces valeurs comme clés d'index plus bas.
   const productIds: string[] = Array.from(
     new Set(listItems.map((item: any) => item.product_id as string))
   );
@@ -784,10 +778,6 @@ export async function optimizeBasket(basketIdOrListId: string): Promise<Optimiza
   };
 }
 
-// ============================================================
-// COMMUNAUTÉ
-// ============================================================
-
 export async function getCommunityFeed(): Promise<CommunityActivityItem[]> {
   const { data, error } = await supabase
     .from('community_activity')
@@ -850,10 +840,6 @@ export async function getLeaderboard(scope: 'friends' | 'city' | 'france'): Prom
   }));
 }
 
-// ============================================================
-// PROFIL
-// ============================================================
-
 export async function getMyProfile(): Promise<UserProfile> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Aucun utilisateur connecté.');
@@ -864,9 +850,7 @@ export async function getMyProfile(): Promise<UserProfile> {
     .eq('id', user.id)
     .maybeSingle();
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
   if (!data) {
     return {
@@ -883,6 +867,13 @@ export async function getMyProfile(): Promise<UserProfile> {
       referralCode: 'TEMP',
       invitedCount: 0,
       ambassadorGoal: 500,
+      onboardingCompleted: false,
+      dailyCalorieGoal: undefined,
+      allergies: [],
+      dietType: 'none',
+      transportMode: 'car_thermal',
+      maxShoppingTimeMinutes: undefined,
+      monthlyBudget: undefined,
     };
   }
 
@@ -900,111 +891,76 @@ export async function getMyProfile(): Promise<UserProfile> {
     referralCode: data.referral_code ?? 'TEMP',
     invitedCount: data.invited_count ?? 0,
     ambassadorGoal: data.ambassador_goal ?? 500,
+    onboardingCompleted: Boolean(data.onboarding_completed),
+    dailyCalorieGoal: data.daily_calorie_goal ?? undefined,
+    allergies: data.allergies ?? [],
+    dietType: data.diet_type ?? 'none',
+    transportMode: data.transport_mode ?? 'car_thermal',
+    maxShoppingTimeMinutes: data.max_shopping_time_minutes ?? undefined,
+    monthlyBudget: data.monthly_budget !== null && data.monthly_budget !== undefined ? Number(data.monthly_budget) : undefined,
   };
 }
 
-// ============================================================
-// ÉVÉNEMENTS / FRAIS PARTAGÉS
-// ============================================================
+export async function completeOnboarding(input: OnboardingProfileInput): Promise<UserProfile> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Aucun utilisateur connecté.');
 
-export async function getEvent(eventId: string): Promise<EventData | null> {
-  const { data: event, error: eventError } = await supabase
-    .from('events')
+  const { data, error } = await supabase
+    .from('users_profiles')
+    .update({
+      onboarding_completed: true,
+      daily_calorie_goal: input.dailyCalorieGoal ?? null,
+      allergies: input.allergies,
+      diet_type: input.dietType,
+      transport_mode: input.transportMode,
+      max_shopping_time_minutes: input.maxShoppingTimeMinutes ?? null,
+      monthly_budget: input.monthlyBudget ?? null,
+    })
+    .eq('id', user.id)
     .select('*')
-    .eq('id', eventId)
     .single();
 
-  if (eventError || !event) return null;
-
-  const { data: participants, error: partError } = await supabase
-    .from('event_participants')
-    .select('*')
-    .eq('event_id', eventId);
-
-  if (partError) throw partError;
-
-  const { data: items, error: itemsError } = await supabase
-    .from('event_items')
-    .select('*')
-    .eq('event_id', eventId);
-
-  if (itemsError) throw itemsError;
-
-  const mappedItems = (items ?? []).map((it: any) => ({
-    id: it.id,
-    name: it.name,
-    purchased: it.purchased,
-    pricePaid: it.price_paid ? Number(it.price_paid) : undefined,
-    proofImageUri: it.proof_image_url ?? undefined
-  }));
-
-  const total = mappedItems.reduce((sum, item) => sum + (item.pricePaid ?? 0), 0);
-  const totalParticipants = (participants ?? []).length || 1;
-  const standardShare = total / totalParticipants;
-
-  const paidAmounts: Record<string, number> = {};
-  (participants ?? []).forEach((p: any) => {
-    const key: string = p.user_id || p.id;
-    paidAmounts[key] = 0;
-  });
-
-  (items ?? []).forEach((it: any) => {
-    if (it.purchased && it.purchased_by && it.price_paid) {
-      const key: string = it.purchased_by;
-      paidAmounts[key] = (paidAmounts[key] || 0) + Number(it.price_paid);
-    }
-  });
-
-  const calculatedBalances = (participants ?? []).map((p: any) => {
-    const uId: string = p.user_id || p.id;
-    const totalPaidByMe = paidAmounts[uId] || 0;
-    return {
-      name: p.name,
-      paid: totalPaidByMe,
-      balance: totalPaidByMe - standardShare
-    };
-  });
+  if (error) throw error;
 
   return {
-    id: event.id,
-    name: event.name,
-    status: event.status as any, // Sécurité TypeScript : Transtypage du statut de l'event
-    participants: (participants ?? []).map((p: any) => ({
-      userId: p.user_id ?? p.id,
-      name: p.name,
-      avatarUri: p.avatar_url
-    })),
-    items: mappedItems,
-    balances: calculatedBalances,
-    total
+    id: data.id,
+    email: data.email ?? user.email ?? '',
+    displayName: data.display_name ?? 'Chasseur de Primes',
+    avatarUrl: data.avatar_url,
+    createdAt: data.created_at ?? new Date().toISOString(),
+    updatedAt: data.updated_at ?? new Date().toISOString(),
+    plan: data.plan as any,
+    totalSavings: Number(data.total_savings ?? 0),
+    totalPoints: data.total_points ?? 0,
+    sentinelLevel: data.sentinel_level ?? 1,
+    referralCode: data.referral_code ?? 'TEMP',
+    invitedCount: data.invited_count ?? 0,
+    ambassadorGoal: data.ambassador_goal ?? 500,
+    onboardingCompleted: Boolean(data.onboarding_completed),
+    dailyCalorieGoal: data.daily_calorie_goal ?? undefined,
+    allergies: data.allergies ?? [],
+    dietType: data.diet_type ?? 'none',
+    transportMode: data.transport_mode ?? 'car_thermal',
+    maxShoppingTimeMinutes: data.max_shopping_time_minutes ?? undefined,
+    monthlyBudget: data.monthly_budget !== null && data.monthly_budget !== undefined ? Number(data.monthly_budget) : undefined,
   };
 }
 
-export async function addEventItem(eventId: string, name: string): Promise<void> {
-  const { error } = await supabase
-    .from('event_items')
-    .insert([{ event_id: eventId, name, purchased: false }]);
-  if (error) throw error;
-}
-
-export async function markItemPurchased(itemId: string, pricePaid: number, proofUri?: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase
-    .from('event_items')
-    .update({
-      purchased: true,
-      price_paid: pricePaid,
-      proof_image_url: proofUri,
-      purchased_by: user?.id ?? null
-    })
-    .eq('id', itemId);
-  if (error) throw error;
-}
-
-export async function settleEvent(eventId: string): Promise<void> {
-  const { error } = await supabase
+export async function getActiveEvents(): Promise<EventData[]> {
+  const { data, error } = await supabase
     .from('events')
-    .update({ status: 'settled' })
-    .eq('id', eventId);
+    .select('*')
+    .eq('is_active', true)
+    .order('end_date', { ascending: true });
+
   if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    pointsReward: row.points_reward,
+    endDate: row.end_date,
+    isActive: row.is_active,
+  }));
 }
