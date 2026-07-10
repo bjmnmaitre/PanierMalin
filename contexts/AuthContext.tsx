@@ -1,9 +1,7 @@
-// contexts/AuthContext.tsx
-// Authentication context using Supabase Auth
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { apiClient } from '@/services/api/client';
+import { getMyProfile } from '@/services/api';
 import type { UserProfile } from '@/types';
 
 export interface AuthContextType {
@@ -27,37 +25,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const supabase = apiClient.getSupabase();
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (!error && data) {
-        setProfile(data as UserProfile);
-      }
+      const data = await getMyProfile();
+      setProfile(data);
     } catch (err) {
       console.error('[Auth] Failed to fetch profile:', err);
+      setProfile(null);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        fetchProfile();
       }
       setIsLoading(false);
     });
 
-    // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        fetchProfile();
       } else {
         setProfile(null);
       }
@@ -89,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = useCallback(async () => {
     if (session?.user) {
-      await fetchProfile(session.user.id);
+      await fetchProfile();
     }
   }, [session, fetchProfile]);
 
