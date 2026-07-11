@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import type { UniversalStoreResult } from '@/types';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import * as Location from 'expo-location';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { colors, spacing, typography } from '@/design';
 import { Card, Input, Button, Badge } from '@/components/primitives';
 import { Header } from '@/components/features';
 import { searchUniversalStores } from '@/services/api';
-import type { UniversalStoreResult } from '@/services/api';
+import type { UniversalStoreResult } from '@/types';
 
 export interface UniversalSearchScreenProps {
   onBack: () => void;

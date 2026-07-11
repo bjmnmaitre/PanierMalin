@@ -1,12 +1,3 @@
-// types/index.ts
-// Complete TypeScript type definitions for PanierMalin
-
-/**
- * ============================================
- * AUTH & USER
- * ============================================
- */
-
 export interface User {
   id: string;
   email: string;
@@ -16,6 +7,12 @@ export interface User {
   updatedAt: string;
 }
 
+export type DietType = 'none' | 'vegan' | 'vegetarian' | 'diabetic';
+
+export type Allergy = 'gluten' | 'lactose' | 'peanuts';
+
+export type TransportMode = 'car_thermal' | 'car_electric' | 'bike' | 'walk';
+
 export interface UserProfile extends User {
   plan: 'free' | 'premium' | 'pro';
   totalSavings: number;
@@ -24,13 +21,23 @@ export interface UserProfile extends User {
   invitedCount: number;
   sentinelLevel?: number;
   ambassadorGoal?: number;
+  onboardingCompleted: boolean;
+  dailyCalorieGoal?: number;
+  allergies: Allergy[];
+  dietType: DietType;
+  transportMode: TransportMode;
+  maxShoppingTimeMinutes?: number;
+  monthlyBudget?: number;
 }
 
-/**
- * ============================================
- * PRODUCTS & PRICES
- * ============================================
- */
+export interface OnboardingProfileInput {
+  dailyCalorieGoal?: number;
+  allergies: Allergy[];
+  dietType: DietType;
+  transportMode: TransportMode;
+  maxShoppingTimeMinutes?: number;
+  monthlyBudget?: number;
+}
 
 export interface Product {
   id: string;
@@ -106,11 +113,18 @@ export interface ProductPrice {
   lng?: number | null;
 }
 
-/**
- * ============================================
- * SHOPPING & BASKETS
- * ============================================
- */
+export interface UniversalStoreResult {
+  id: string;
+  name: string;
+  category: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  hours?: string;
+  phone?: string;
+  website?: string;
+}
 
 export interface ShoppingList {
   id: string;
@@ -122,7 +136,7 @@ export interface ShoppingList {
   estimatedTotal: number;
   isShared: boolean;
   isArchived: boolean;
-  collaborators?: string[]; // User IDs
+  collaborators?: string[];
   collaboratorAvatars?: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -169,12 +183,6 @@ export interface SavedBasket {
 
 export interface SavedBasketData extends SavedBasket {}
 
-/**
- * ============================================
- * OPTIMIZATION
- * ============================================
- */
-
 export interface OptimizationResult {
   totalSavings: number;
   savingsPercentage?: number;
@@ -219,12 +227,6 @@ export interface ItemBreakdown {
   total: number;
 }
 
-/**
- * ============================================
- * COMMUNITY
- * ============================================
- */
-
 export interface CommunityActivity {
   id: string;
   userId: string;
@@ -259,12 +261,6 @@ export interface LeaderboardEntry {
   isCurrentUser: boolean;
   isMe: boolean;
 }
-
-/**
- * ============================================
- * EVENTS & SHARED EXPENSES
- * ============================================
- */
 
 export interface EventData {
   id: string;
@@ -326,12 +322,6 @@ export interface EventItem {
   receipt?: string;
 }
 
-/**
- * ============================================
- * API RESPONSES
- * ============================================
- */
-
 export interface ApiResponse<T> {
   data: T;
   status: number;
@@ -354,12 +344,6 @@ export interface PaginatedResponse<T> {
     hasMore: boolean;
   };
 }
-
-/**
- * ============================================
- * FORMS & VALIDATION
- * ============================================
- */
 
 export interface LoginRequest {
   email: string;
@@ -392,12 +376,6 @@ export interface ReportPriceRequest {
   proofImageUrl?: string;
 }
 
-/**
- * ============================================
- * FILTERS & SORTING
- * ============================================
- */
-
 export type SortBy = 'price_asc' | 'price_desc' | 'distance' | 'freshness' | 'rating';
 
 export interface ProductFilter {
@@ -413,16 +391,10 @@ export interface ProductFilter {
 export interface StoreFilter {
   latitude?: number;
   longitude?: number;
-  radius?: number; // km
+  radius?: number;
   chains?: StoreChain[];
   minRating?: number;
 }
-
-/**
- * ============================================
- * NOTIFICATIONS & ALERTS
- * ============================================
- */
 
 export interface Notification {
   id: string;
@@ -434,12 +406,6 @@ export interface Notification {
   isRead: boolean;
   createdAt: string;
 }
-
-/**
- * ============================================
- * ANALYTICS
- * ============================================
- */
 
 export interface UserAnalytics {
   userId: string;

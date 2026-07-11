@@ -14,6 +14,7 @@ import {
   UserProfile,
   EventData,
   OnboardingProfileInput,
+  UniversalStoreResult,
 } from '../types';
 
 const USE_MOCK_PRODUCTS = false;
@@ -176,9 +177,17 @@ function isRelevantOverpassStore(tags: Record<string, string | undefined>): bool
   const amenityValue = (tags.amenity ?? '').toLowerCase();
   const combinedName = `${tags.name ?? ''} ${tags.brand ?? ''} ${tags.operator ?? ''}`.toLowerCase();
 
-  if (amenityValue === 'fuel') return false;
-  if (shopValue && !['supermarket', 'convenience'].includes(shopValue)) return false;
-  if (/(station|total|avia|esso|shell|eni|elan)/i.test(combinedName)) return false;
+  if (amenityValue === 'fuel') {
+    return false;
+  }
+
+  if (shopValue && !['supermarket', 'convenience'].includes(shopValue)) {
+    return false;
+  }
+
+  if (/(station|total|avia|esso|shell|eni|elan)/i.test(combinedName)) {
+    return false;
+  }
 
   return shopValue === 'supermarket' || shopValue === 'convenience';
 }
@@ -187,10 +196,14 @@ function mapOverpassElementToStore(element: any): Store | null {
   const tags = element?.tags ?? {};
   const name = tags.name?.trim() || tags.brand?.trim() || 'Magasin';
 
-  if (!isRelevantOverpassStore(tags)) return null;
+  if (!isRelevantOverpassStore(tags)) {
+    return null;
+  }
 
   const center = getElementCenter(element);
-  if (!center) return null;
+  if (!center) {
+    return null;
+  }
 
   const address = extractAddress(tags) || tags['addr:full'] || '';
 
@@ -225,11 +238,15 @@ export async function getClosestStores(lat: number, lng: number, radius: number 
   try {
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
       body: new URLSearchParams({ data: query }).toString(),
     });
 
-    if (!response.ok) throw new Error(`Overpass request failed with ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Overpass request failed with ${response.status}`);
+    }
 
     const data = await response.json();
     const stores = (data?.elements ?? [])
@@ -250,6 +267,245 @@ export async function getClosestStores(lat: number, lng: number, radius: number 
     return sortedStores.slice(0, 20);
   } catch (error) {
     console.warn('Overpass lookup failed', error);
+    return [];
+  }
+}
+
+const universalSearchCache: Record<string, { timestamp: number; results: UniversalStoreResult[] }> = {};
+const UNIVERSAL_SEARCH_CACHE_TTL_MS = 30_000;
+const UNIVERSAL_SEARCH_DEFAULT_RADIUS_METERS = 5000;
+
+const UNIVERSAL_SEARCH_SYNONYMS: Record<string, string[]> = {
+  boulangerie: ['bakery'],
+  boulanger: ['bakery'],
+  patisserie: ['pastry', 'confectionery'],
+  patissier: ['pastry', 'confectionery'],
+  boucherie: ['butcher'],
+  boucher: ['butcher'],
+  poissonnerie: ['seafood'],
+  fromagerie: ['cheese', 'dairy'],
+  primeur: ['greengrocer'],
+  epicerie: ['convenience', 'grocery'],
+  pharmacie: ['pharmacy'],
+  parapharmacie: ['chemist'],
+  opticien: ['optician'],
+  coiffeur: ['hairdresser'],
+  fleuriste: ['florist'],
+  librairie: ['books'],
+  papeterie: ['stationery'],
+  quincaillerie: ['hardware', 'doityourself'],
+  bricolage: ['doityourself', 'hardware'],
+  cordonnier: ['shoe_repair'],
+  pressing: ['dry_cleaning', 'laundry'],
+  cbd: ['herbalist', 'cannabis'],
+  vape: ['e-cigarette'],
+  animalerie: ['pet'],
+  bijouterie: ['jewelry'],
+  horlogerie: ['watches'],
+  vetements: ['clothes'],
+  chaussures: ['shoes'],
+  sport: ['sports'],
+  jouets: ['toys'],
+  informatique: ['computer', 'electronics'],
+  telephonie: ['mobile_phone', 'electronics'],
+  meubles: ['furniture'],
+};
+
+const UNIVERSAL_CRAFT_KEYWORDS = ['artisan', 'artisanat', 'ebeniste', 'menuisier', 'plombier', 'electricien', 'serrurier', 'tapissier'];
+
+const UNIVERSAL_CATEGORY_LABELS: Record<string, string> = {
+  bakery: 'Boulangerie',
+  pastry: 'Pâtisserie',
+  confectionery: 'Confiserie',
+  butcher: 'Boucherie',
+  seafood: 'Poissonnerie',
+  cheese: 'Fromagerie',
+  dairy: 'Crèmerie',
+  greengrocer: 'Primeur',
+  convenience: 'Épicerie',
+  grocery: 'Épicerie',
+  pharmacy: 'Pharmacie',
+  chemist: 'Parapharmacie',
+  optician: 'Opticien',
+  hairdresser: 'Coiffeur',
+  florist: 'Fleuriste',
+  books: 'Librairie',
+  stationery: 'Papeterie',
+  hardware: 'Quincaillerie',
+  doityourself: 'Bricolage',
+  shoe_repair: 'Cordonnerie',
+  dry_cleaning: 'Pressing',
+  laundry: 'Laverie',
+  herbalist: 'Herboristerie / CBD',
+  cannabis: 'Boutique CBD',
+  'e-cigarette': 'Cigarette électronique',
+  pet: 'Animalerie',
+  jewelry: 'Bijouterie',
+  watches: 'Horlogerie',
+  clothes: 'Vêtements',
+  shoes: 'Chaussures',
+  sports: 'Articles de sport',
+  toys: 'Jouets',
+  computer: 'Informatique',
+  electronics: 'Électronique',
+  mobile_phone: 'Téléphonie',
+  furniture: 'Meubles',
+};
+
+const ACCENT_CHAR_MAP: Record<string, string> = {
+  à: 'a', â: 'a', ä: 'a', á: 'a',
+  ç: 'c',
+  é: 'e', è: 'e', ê: 'e', ë: 'e',
+  î: 'i', ï: 'i',
+  ô: 'o', ö: 'o',
+  ù: 'u', û: 'u', ü: 'u',
+  ÿ: 'y',
+  œ: 'oe',
+};
+
+function normalizeKeyword(keyword: string): string {
+  return keyword
+    .trim()
+    .toLowerCase()
+    .split('')
+    .map((char) => ACCENT_CHAR_MAP[char] ?? char)
+    .join('');
+}
+
+function escapeOverpassRegex(value: string): string {
+  return value.replace(/["\\]/g, '');
+}
+
+function computeDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const earthRadiusKm = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return earthRadiusKm * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function resolveCategoryLabel(tags: Record<string, string | undefined>): string {
+  const rawValue = tags.shop || tags.amenity || tags.craft;
+  if (!rawValue) return 'Commerce';
+
+  const label = UNIVERSAL_CATEGORY_LABELS[rawValue.toLowerCase()];
+  if (label) return label;
+
+  return rawValue.replace(/_/g, ' ').replace(/^\w/, (char) => char.toUpperCase());
+}
+
+function buildUniversalOverpassQuery(normalizedKeyword: string, lat: number, lng: number, radius: number): string {
+  const synonyms = UNIVERSAL_SEARCH_SYNONYMS[normalizedKeyword] ?? [];
+  const around = `around:${radius},${lat},${lng}`;
+  const clauses: string[] = [];
+
+  synonyms.forEach((tagValue) => {
+    clauses.push(`node(${around})["shop"="${tagValue}"];`);
+    clauses.push(`node(${around})["amenity"="${tagValue}"];`);
+  });
+
+  if (UNIVERSAL_CRAFT_KEYWORDS.includes(normalizedKeyword)) {
+    clauses.push(`node(${around})["craft"];`);
+  }
+
+  const escaped = escapeOverpassRegex(normalizedKeyword);
+  if (escaped) {
+    clauses.push(`node(${around})["shop"~"${escaped}",i];`);
+    clauses.push(`node(${around})["amenity"~"${escaped}",i];`);
+    clauses.push(`node(${around})["craft"~"${escaped}",i];`);
+    clauses.push(`node(${around})["name"~"${escaped}",i];`);
+  }
+
+  return `[out:json][timeout:25];(${clauses.join('')});out center 40;`;
+}
+
+function mapOverpassElementToUniversalStore(element: any, originLat: number, originLng: number): UniversalStoreResult | null {
+  const tags = element?.tags ?? {};
+  const name = tags.name?.trim() || tags.brand?.trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const center = getElementCenter(element);
+  if (!center) {
+    return null;
+  }
+
+  return {
+    id: `osm-${element?.type}-${element?.id}`,
+    name,
+    category: resolveCategoryLabel(tags),
+    address: extractAddress(tags) || tags['addr:full'] || '',
+    latitude: center.latitude,
+    longitude: center.longitude,
+    distanceKm: computeDistanceKm(originLat, originLng, center.latitude, center.longitude),
+    hours: tags.opening_hours,
+    phone: tags.phone || tags['contact:phone'],
+    website: tags.website || tags['contact:website'],
+  };
+}
+
+export async function searchUniversalStores(
+  keyword: string,
+  lat: number,
+  lng: number,
+  radius: number = UNIVERSAL_SEARCH_DEFAULT_RADIUS_METERS
+): Promise<UniversalStoreResult[]> {
+  const normalizedKeyword = normalizeKeyword(keyword);
+  if (!normalizedKeyword) {
+    return [];
+  }
+
+  const roundedLat = Number(lat.toFixed(4));
+  const roundedLng = Number(lng.toFixed(4));
+  const cacheKey = `${normalizedKeyword}:${roundedLat}:${roundedLng}:${Math.round(radius / 1000)}`;
+  const now = Date.now();
+  const cachedEntry = universalSearchCache[cacheKey];
+
+  if (cachedEntry && now - cachedEntry.timestamp < UNIVERSAL_SEARCH_CACHE_TTL_MS) {
+    return cachedEntry.results;
+  }
+
+  const query = buildUniversalOverpassQuery(normalizedKeyword, lat, lng, radius);
+
+  try {
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+      body: new URLSearchParams({ data: query }).toString(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Overpass request failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    const results = (data?.elements ?? [])
+      .map((element: any) => mapOverpassElementToUniversalStore(element, lat, lng))
+      .filter((store: UniversalStoreResult | null): store is UniversalStoreResult => Boolean(store));
+
+    const uniqueResults = results.filter(
+      (store: UniversalStoreResult, index: number, allStores: UniversalStoreResult[]) =>
+        allStores.findIndex((candidate: UniversalStoreResult) => candidate.id === store.id) === index
+    );
+
+    const sortedResults = uniqueResults.sort(
+      (a: UniversalStoreResult, b: UniversalStoreResult) => a.distanceKm - b.distanceKm
+    );
+
+    universalSearchCache[cacheKey] = {
+      timestamp: now,
+      results: sortedResults,
+    };
+
+    return sortedResults.slice(0, 30);
+  } catch (error) {
+    console.warn('[API] searchUniversalStores a échoué', error);
     return [];
   }
 }
@@ -850,7 +1106,9 @@ export async function getMyProfile(): Promise<UserProfile> {
     .eq('id', user.id)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   if (!data) {
     return {
@@ -946,21 +1204,104 @@ export async function completeOnboarding(input: OnboardingProfileInput): Promise
   };
 }
 
-export async function getActiveEvents(): Promise<EventData[]> {
-  const { data, error } = await supabase
+export async function getEvent(eventId: string): Promise<EventData | null> {
+  const { data: event, error: eventError } = await supabase
     .from('events')
     .select('*')
-    .eq('is_active', true)
-    .order('end_date', { ascending: true });
+    .eq('id', eventId)
+    .single();
 
-  if (error) throw error;
+  if (eventError || !event) return null;
 
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    pointsReward: row.points_reward,
-    endDate: row.end_date,
-    isActive: row.is_active,
+  const { data: participants, error: partError } = await supabase
+    .from('event_participants')
+    .select('*')
+    .eq('event_id', eventId);
+
+  if (partError) throw partError;
+
+  const { data: items, error: itemsError } = await supabase
+    .from('event_items')
+    .select('*')
+    .eq('event_id', eventId);
+
+  if (itemsError) throw itemsError;
+
+  const mappedItems = (items ?? []).map((it: any) => ({
+    id: it.id,
+    name: it.name,
+    purchased: it.purchased,
+    pricePaid: it.price_paid ? Number(it.price_paid) : undefined,
+    proofImageUri: it.proof_image_url ?? undefined
   }));
+
+  const total = mappedItems.reduce((sum, item) => sum + (item.pricePaid ?? 0), 0);
+  const totalParticipants = (participants ?? []).length || 1;
+  const standardShare = total / totalParticipants;
+
+  const paidAmounts: Record<string, number> = {};
+  (participants ?? []).forEach((p: any) => {
+    const key: string = p.user_id || p.id;
+    paidAmounts[key] = 0;
+  });
+
+  (items ?? []).forEach((it: any) => {
+    if (it.purchased && it.purchased_by && it.price_paid) {
+      const key: string = it.purchased_by;
+      paidAmounts[key] = (paidAmounts[key] || 0) + Number(it.price_paid);
+    }
+  });
+
+  const calculatedBalances = (participants ?? []).map((p: any) => {
+    const uId: string = p.user_id || p.id;
+    const totalPaidByMe = paidAmounts[uId] || 0;
+    return {
+      name: p.name,
+      paid: totalPaidByMe,
+      balance: totalPaidByMe - standardShare
+    };
+  });
+
+  return {
+    id: event.id,
+    name: event.name,
+    status: event.status as any,
+    participants: (participants ?? []).map((p: any) => ({
+      userId: p.user_id ?? p.id,
+      name: p.name,
+      avatarUri: p.avatar_url
+    })),
+    items: mappedItems,
+    balances: calculatedBalances,
+    total
+  };
+}
+
+export async function addEventItem(eventId: string, name: string): Promise<void> {
+  const { error } = await supabase
+    .from('event_items')
+    .insert([{ event_id: eventId, name, purchased: false }]);
+  if (error) throw error;
+}
+
+export async function markItemPurchased(itemId: string, pricePaid: number, proofUri?: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('event_items')
+    .update({
+      purchased: true,
+      price_paid: pricePaid,
+      proof_image_url: proofUri,
+      purchased_by: user?.id ?? null
+    })
+    .eq('id', itemId);
+  if (error) throw error;
+}
+
+export async function settleEvent(eventId: string): Promise<void> {
+  const { error } = await supabase
+    .from('events')
+    .update({ status: 'settled' })
+    .eq('id', eventId);
+  if (error) throw error;
 }
