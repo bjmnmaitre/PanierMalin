@@ -1,8 +1,8 @@
-import type { UniversalStoreResult } from '@/types';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Animated } from 'react-native';
 import * as Location from 'expo-location';
 import { MaterialIcons } from '@expo/vector-icons';
-import { colors, spacing, typography } from '@/design';
+import { colors, spacing, radii, typography } from '@/design';
 import { Card, Input, Button, Badge } from '@/components/primitives';
 import { Header } from '@/components/features';
 import { searchUniversalStores } from '@/services/api';
@@ -19,6 +19,27 @@ const FALLBACK_REGION = {
 
 const SUGGESTED_KEYWORDS = ['Boulangerie', 'Pharmacie', 'Quincaillerie', 'CBD', 'Artisan', 'Fleuriste'];
 
+function AnimatedResultCard({ children }: { children: React.ReactNode }) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 10,
+    }).start();
+  }, [progress]);
+
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+
+  return (
+    <Animated.View style={{ opacity: progress, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenProps) {
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLocating, setIsLocating] = useState(true);
@@ -30,6 +51,10 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [itineraryIds, setItineraryIds] = useState<string[]>([]);
+  const [newStoreIds, setNewStoreIds] = useState<Set<string>>(new Set());
+
+  const seenStoreIdsRef = useRef<Set<string>>(new Set());
+  const bannerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     (async () => {
@@ -61,7 +86,24 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
 
     try {
       const data = await searchUniversalStores(trimmed, userCoords.latitude, userCoords.longitude);
+
+      const freshIds = new Set(
+        data.filter((store) => !seenStoreIdsRef.current.has(store.id)).map((store) => store.id)
+      );
+      data.forEach((store) => seenStoreIdsRef.current.add(store.id));
+
+      setNewStoreIds(freshIds);
       setResults(data);
+
+      if (data.length > 0) {
+        bannerAnim.setValue(0);
+        Animated.spring(bannerAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 70,
+          friction: 9,
+        }).start();
+      }
     } catch (error) {
       console.error('[UniversalSearchScreen] Recherche échouée', error);
       setSearchError("La recherche a échoué. Réessaie dans un instant.");
@@ -79,6 +121,8 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
   const toggleItinerary = (id: string) => {
     setItineraryIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
   };
+
+  const bannerScale = bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
 
   return (
     <View style={styles.root}>
@@ -163,57 +207,79 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
           </Card>
         )}
 
+        {!isSearching && hasSearched && !searchError && results.length > 0 && (
+          <Animated.View
+            style={[
+              styles.celebrationBanner,
+              { opacity: bannerAnim, transform: [{ scale: bannerScale }] },
+            ]}
+          >
+            <MaterialIcons name="celebration" size={18} color={colors.white} />
+            <Text style={styles.celebrationText}>
+              {results.length} commerce{results.length > 1 ? 's' : ''} trouvé{results.length > 1 ? 's' : ''} près de toi
+            </Text>
+          </Animated.View>
+        )}
+
         {!isSearching &&
-          results.map((store) => {
+          results.map((store, index) => {
             const inItinerary = itineraryIds.includes(store.id);
+            const isNearest = index === 0;
+            const isNew = newStoreIds.has(store.id);
 
             return (
-              <Card key={store.id} padding="md" shadow="sm" style={styles.resultCard}>
-                <View style={styles.resultHeaderRow}>
-                  <View style={styles.resultTitleBlock}>
-                    <Text style={styles.resultName}>{store.name}</Text>
-                    <Badge label={store.category} variant="info" style={styles.categoryBadge} />
+              <AnimatedResultCard key={store.id}>
+                <Card padding="md" shadow="sm" style={styles.resultCard}>
+                  <View style={styles.resultHeaderRow}>
+                    <View style={styles.resultTitleBlock}>
+                      <Text style={styles.resultName}>{store.name}</Text>
+                      <View style={styles.badgesRow}>
+                        <Badge label={store.category} variant="info" />
+                        {isNearest && <Badge label="Le plus proche" variant="success" icon="near-me" />}
+                        {isNew && <Badge label="Nouveau" variant="warning" icon="new-releases" />}
+                      </View>
+                    </View>
+                    <Text style={styles.resultDistance}>{store.distanceKm.toFixed(1)} km</Text>
                   </View>
-                  <Text style={styles.resultDistance}>{store.distanceKm.toFixed(1)} km</Text>
-                </View>
 
-                {store.address.length > 0 && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="place" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.address}</Text>
-                  </View>
-                )}
+                  {store.address.length > 0 && (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="place" size={16} color={colors.text.tertiary} />
+                      <Text style={styles.infoText}>{store.address}</Text>
+                    </View>
+                  )}
 
-                {store.hours && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="schedule" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.hours}</Text>
-                  </View>
-                )}
+                  {store.hours && (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="schedule" size={16} color={colors.text.tertiary} />
+                      <Text style={styles.infoText}>{store.hours}</Text>
+                    </View>
+                  )}
 
-                {store.phone && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="phone" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.phone}</Text>
-                  </View>
-                )}
+                  {store.phone && (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="phone" size={16} color={colors.text.tertiary} />
+                      <Text style={styles.infoText}>{store.phone}</Text>
+                    </View>
+                  )}
 
-                {store.website && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="public" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText} numberOfLines={1}>{store.website}</Text>
-                  </View>
-                )}
+                  {store.website && (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="public" size={16} color={colors.text.tertiary} />
+                      <Text style={styles.infoText} numberOfLines={1}>{store.website}</Text>
+                    </View>
+                  )}
 
-                <Button
-                  label={inItinerary ? "Ajouté à l'itinéraire" : "Ajouter à l'itinéraire"}
-                  variant={inItinerary ? 'outline' : 'primary'}
-                  icon={inItinerary ? 'done' : 'add-road'}
-                  onPress={() => toggleItinerary(store.id)}
-                  fullWidth
-                  style={styles.itineraryButton}
-                />
-              </Card>
+                  <Button
+                    label={inItinerary ? "Ajouté à l'itinéraire" : "Ajouter à l'itinéraire"}
+                    variant={inItinerary ? 'outline' : 'primary'}
+                    icon={inItinerary ? 'done' : 'add-road'}
+                    onPress={() => toggleItinerary(store.id)}
+                    fullWidth
+                    style={styles.itineraryButton}
+                  />
+                </Card>
+              </AnimatedResultCard>
             );
           })}
 
@@ -253,6 +319,22 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
   },
+  celebrationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[2],
+    backgroundColor: colors.primary,
+    borderRadius: radii.full,
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[4],
+    marginTop: spacing[3],
+    alignSelf: 'center',
+  },
+  celebrationText: {
+    ...typography.labelMedium,
+    color: colors.white,
+  },
   resultCard: {
     marginTop: spacing[3],
     gap: spacing[2],
@@ -271,8 +353,10 @@ const styles = StyleSheet.create({
     ...typography.h4,
     color: colors.text.primary,
   },
-  categoryBadge: {
-    alignSelf: 'flex-start',
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1],
   },
   resultDistance: {
     ...typography.labelMedium,
