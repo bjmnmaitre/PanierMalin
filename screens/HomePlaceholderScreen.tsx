@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '@/design';
 import { Card } from '@/components/primitives';
@@ -11,9 +12,7 @@ import { getMyLists } from '@/services/api';
 import { formatPrice } from '@/utils/formatters';
 
 export interface HomePlaceholderScreenProps {
-  /** Navigation vers un autre onglet (barre de navigation + raccourcis) */
   onNavigate: (tab: TabKey) => void;
-  /** Ouvre le flux d'optimisation de panier (route hors-onglets `/optimize`) */
   onOptimize: () => void;
 }
 
@@ -28,6 +27,7 @@ interface QuickAction {
 
 export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePlaceholderScreenProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { profile, isLoading: isProfileLoading } = useAuth();
 
   const {
@@ -90,6 +90,18 @@ export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePl
           <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.subtitle}>Prêt à faire des économies aujourd'hui ?</Text>
         </View>
+
+        <Card
+          padding="md"
+          shadow="sm"
+          onPress={() => router.push('/search')}
+          style={styles.searchBarCard}
+        >
+          <View style={styles.searchBarRow}>
+            <MaterialIcons name="search" size={22} color={colors.text.tertiary} />
+            <Text style={styles.searchBarPlaceholder}>Boulangerie, pharmacie, artisan...</Text>
+          </View>
+        </Card>
 
         <Card
           padding="lg"
@@ -168,6 +180,18 @@ const styles = StyleSheet.create({
     ...typography.bodyMedium,
     color: colors.text.secondary,
     marginTop: spacing[1],
+  },
+  searchBarCard: {
+    marginBottom: spacing[4],
+  },
+  searchBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  searchBarPlaceholder: {
+    ...typography.bodyMedium,
+    color: colors.text.tertiary,
   },
   savingsCard: {
     marginBottom: spacing[6],

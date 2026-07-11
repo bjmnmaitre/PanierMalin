@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, shadows } from '@/design';
 import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
@@ -13,19 +14,14 @@ import { getClosestStores } from '@/services/api';
 import type { Store } from '@/types';
 
 export interface MapScreenProps {
-  /** Navigation vers un autre onglet (barre de navigation) */
   onNavigate: (tab: TabKey) => void;
 }
 
-// Position de repli si la géolocalisation est refusée ou indisponible
-// (Puilboreau — zone de test de PanierMalin, cf. supabase/seed_stores_puilboreau.sql)
 const FALLBACK_REGION = {
   latitude: 46.1601,
   longitude: -1.1511,
 };
 
-// Couleurs de pastille par enseigne connue (valeurs réellement renvoyées par
-// inferBrandFromName() dans services/api.ts). Enseigne inconnue -> tertiary.
 const BRAND_COLORS: Record<string, string> = {
   Leclerc: colors.secondary,
   Lidl: colors.tertiary,
@@ -45,7 +41,6 @@ function toRadians(value: number): number {
   return (value * Math.PI) / 180;
 }
 
-/** Distance à vol d'oiseau en kilomètres (formule de Haversine) */
 function computeDistanceKm(from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }): number {
   const earthRadiusKm = 6371;
   const dLat = toRadians(to.latitude - from.latitude);
@@ -57,6 +52,7 @@ function computeDistanceKm(from: { latitude: number; longitude: number }, to: { 
 }
 
 export default function MapScreen({ onNavigate }: MapScreenProps) {
+  const router = useRouter();
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLocating, setIsLocating] = useState(true);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -72,7 +68,6 @@ export default function MapScreen({ onNavigate }: MapScreenProps) {
     false
   );
 
-  // Géolocalisation au montage, avec repli sur la zone de test PanierMalin
   useEffect(() => {
     (async () => {
       try {
@@ -93,12 +88,10 @@ export default function MapScreen({ onNavigate }: MapScreenProps) {
     })();
   }, []);
 
-  // Une fois la position connue, on va chercher les magasins autour
   useEffect(() => {
     if (userCoords) {
       reloadStores();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userCoords]);
 
   const storesWithDistance = useMemo(() => {
@@ -196,6 +189,16 @@ export default function MapScreen({ onNavigate }: MapScreenProps) {
           </View>
         )}
 
+        <Pressable
+          style={styles.searchFab}
+          onPress={() => router.push('/search')}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Recherche universelle"
+        >
+          <MaterialIcons name="search" size={26} color={colors.white} />
+        </Pressable>
+
         <StoreDetailBottomSheet
           store={selectedStore}
           distanceKm={
@@ -249,6 +252,18 @@ const styles = StyleSheet.create({
     top: spacing[6],
     left: spacing[4],
     right: spacing[4],
+  },
+  searchFab: {
+    position: 'absolute',
+    bottom: spacing[6],
+    right: spacing[4],
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.lg,
   },
   noticeBanner: {
     position: 'absolute',
