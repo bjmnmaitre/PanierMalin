@@ -1,4 +1,3 @@
-// app/_layout.tsx
 import React from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
@@ -8,7 +7,7 @@ import { View } from 'react-native';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 
 function RootLayoutNav() {
-  const { session, isLoading } = useAuth();
+  const { session, profile, isLoading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
 
@@ -16,23 +15,38 @@ function RootLayoutNav() {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inOnboarding = segments[0] === 'onboarding';
 
-    if (!session && !inAuthGroup) {
-      // Pas connecté et pas déjà sur un écran d'auth → redirection
-      router.replace('/(auth)/welcome');
-    } else if (session && inAuthGroup) {
-      // Connecté mais encore sur un écran d'auth → redirection vers l'app
+    if (!session) {
+      if (!inAuthGroup) {
+        router.replace('/(auth)/welcome');
+      }
+      return;
+    }
+
+    if (!profile) return;
+
+    if (!profile.onboardingCompleted) {
+      if (!inOnboarding) {
+        router.replace('/onboarding');
+      }
+      return;
+    }
+
+    if (inAuthGroup || inOnboarding) {
       router.replace('/(tabs)');
     }
-  }, [session, isLoading, segments]);
+  }, [session, profile, isLoading, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="onboarding" options={{ presentation: 'card' }} />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="product/[ean]" options={{ presentation: 'card' }} />
       <Stack.Screen name="optimize" options={{ presentation: 'card' }} />
       <Stack.Screen name="baskets" options={{ presentation: 'card' }} />
+      <Stack.Screen name="shopping-mode" options={{ presentation: 'card', headerShown: false }} />
       <Stack.Screen name="community/leaderboard" options={{ presentation: 'card' }} />
       <Stack.Screen name="community/invite" options={{ presentation: 'card' }} />
     </Stack>
