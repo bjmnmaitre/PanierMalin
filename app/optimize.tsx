@@ -1,31 +1,29 @@
-// app/optimize.tsx
 import React from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import BasketOptimizationScreen from '../screens/BasketOptimizationScreen';
-import { TabKey } from '../components/BottomNav';
-import { TAB_ROUTES } from '../utils/_navHelpers';
+import BasketOptimizationScreen from '@/screens/BasketOptimizationScreen';
 
 export default function OptimizeRoute() {
   const router = useRouter();
-  const { basketId } = useLocalSearchParams<{ basketId?: string }>();
+  const params = useLocalSearchParams<{ listId?: string; listName?: string }>();
+  const listId = Array.isArray(params.listId) ? params.listId[0] : params.listId;
+  const listName = Array.isArray(params.listName) ? params.listName[0] : params.listName;
+
+  if (!listId) {
+    return null;
+  }
 
   return (
     <BasketOptimizationScreen
-      basketIdOrListId={basketId ?? 'default'}
-      onNavigate={(tab: TabKey) => router.replace(TAB_ROUTES[tab] as any)}
+      listId={listId}
+      listName={listName}
+      onBack={() => router.back()}
       onValidateRoute={() => {
-        console.log('[OptimizeRoute] Trajet validé avec succès !');
-        
-        // 🚀 FLUX PRINCIPAL : Redirection directe vers le Mode Course
-        // On transmet le basketId pour charger la session correspondante
         router.push({
           pathname: '/shopping-mode',
-          params: { basketId: basketId ?? 'default' },
+          params: { listId },
         });
       }}
-      onViewMap={() => {
-        console.log('[OptimizeRoute] Ouverture du trajet cartographique');
-      }}
+      onViewMap={() => router.push('/(tabs)/map')}
     />
   );
 }
