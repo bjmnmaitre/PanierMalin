@@ -1,11 +1,14 @@
 // components/features/Header.tsx
 // Screen header with title, back button, and action buttons
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '@/design';
+import Logo from '@/components/primitives/Logo';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUnreadCount, subscribeToNotifications } from '@/services/notificationService';
 
 export interface HeaderAction {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -15,12 +18,62 @@ export interface HeaderAction {
 }
 
 export interface HeaderProps {
-  title: string;
+  title?: string;
   subtitle?: string;
+  /** Affiche le logo PanierMalin complet à la place du titre. Ignoré si title est fourni. */
+  showLogo?: boolean;
   onBackPress?: () => void;
   actions?: HeaderAction[];
   transparent?: boolean;
   testID?: string;
+  /** Affiche la cloche de notifications avec badge en temps réel. */
+  showNotificationBell?: boolean;
+  onNotificationPress?: () => void;
+}
+
+// ─── NotificationBell ─────────────────────────────────────────────────────────
+
+function NotificationBell({ onPress }: { onPress: () => void }) {
+  const { user } = useAuth();
+  const [count, setCount] = useState(0);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Charge le compteur initial
+    getUnreadCount().then(setCount).catch(() => { /* silencieux */ });
+
+    // Abonnement Realtime : INSERT → +1 ; UPDATE → re-fetch
+    cleanupRef.current = subscribeToNotifications(
+      user.id,
+      () => setCount((prev) => prev + 1),
+      () => { getUnreadCount().then(setCount).catch(() => { /* silencieux */ }); },
+    );
+
+    return () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
+  }, [user]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.actionButton}
+      hitSlop={8}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={count > 0 ? `${count} notifications non lues` : 'Notifications'}
+    >
+      <MaterialIcons name="notifications-none" size={24} color={colors.text.primary} />
+      {count > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{count > 9 ? '9+' : count}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
 }
 
 /**
@@ -39,10 +92,13 @@ export interface HeaderProps {
 const Header = React.memo(function Header({
   title,
   subtitle,
+  showLogo = false,
   onBackPress,
   actions,
   transparent = false,
   testID,
+  showNotificationBell = false,
+  onNotificationPress,
 }: HeaderProps) {
 
   const insets = useSafeAreaInsets();
@@ -71,22 +127,24 @@ const Header = React.memo(function Header({
           </Pressable>
         )}
 
-        {/* Title + subtitle */}
+        {/* Title / Logo */}
         <View style={styles.titleContainer}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle && (
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {subtitle}
-            </Text>
-          )}
+          {title ? (
+            <>
+              <Text style={styles.title} numberOfLines={1}>{title}</Text>
+              {subtitle && (
+                <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+              )}
+            </>
+          ) : showLogo ? (
+            <Logo variant="full" size={28} />
+          ) : null}
         </View>
 
         {/* Action buttons */}
-        {actions && actions.length > 0 && (
+        {(actions && actions.length > 0 || showNotificationBell) && (
           <View style={styles.actionsRow}>
-            {actions.map((action, index) => (
+            {actions?.map((action, index) => (
               <Pressable
                 key={index}
                 onPress={action.onPress}
@@ -106,6 +164,9 @@ const Header = React.memo(function Header({
                 )}
               </Pressable>
             ))}
+            {showNotificationBell && onNotificationPress && (
+              <NotificationBell onPress={onNotificationPress} />
+            )}
           </View>
         )}
       </View>

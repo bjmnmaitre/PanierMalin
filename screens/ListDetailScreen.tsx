@@ -35,7 +35,6 @@ export default function ListDetailScreen({ listId, listName, onBack }: ListDetai
 
   useEffect(() => {
     fetchItems();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listId]);
 
   const handleAddItem = async () => {
@@ -85,6 +84,13 @@ export default function ListDetailScreen({ listId, listName, onBack }: ListDetai
     router.push({
       pathname: '/optimize',
       params: { listId, listName },
+    });
+  };
+
+  const handleStartShopping = () => {
+    router.push({
+      pathname: '/shopping-mode',
+      params: { listId },
     });
   };
 
@@ -192,7 +198,15 @@ export default function ListDetailScreen({ listId, listName, onBack }: ListDetai
       )}
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing[4]) }]}>
-        <Button label="Optimiser mon panier" icon="flash-on" variant="primary" fullWidth onPress={handleOptimize} />
+        <Button
+          label="Démarrer la course"
+          icon="directions-run"
+          variant="primary"
+          fullWidth
+          onPress={handleStartShopping}
+          style={styles.startShoppingButton}
+        />
+        <Button label="Optimiser mon panier" icon="flash-on" variant="outline" fullWidth onPress={handleOptimize} />
       </View>
     </View>
   );
@@ -297,5 +311,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
+    gap: spacing[2],
+  },
+  startShoppingButton: {
+    marginBottom: 0,
   },
 });

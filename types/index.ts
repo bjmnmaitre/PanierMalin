@@ -106,11 +106,7 @@ export interface ProductPrice {
   proofImageUrl?: string | null;
   isVerified: boolean;
   verifiedAt?: string | null;
-  storeName?: string;
-  chain?: string | null;
-  logoUri?: string | null;
-  lat?: number | null;
-  lng?: number | null;
+  storeName?: string | null;
 }
 
 export interface UniversalStoreResult {
@@ -258,6 +254,7 @@ export interface LeaderboardEntry {
   avatarUri?: string;
   totalSavings: number;
   savings: number;
+  contributionCount?: number;
   isCurrentUser: boolean;
   isMe: boolean;
 }
@@ -415,4 +412,18 @@ export interface UserAnalytics {
   favoriteStores: StoreChain[];
   favoriteCategories: string[];
   lastActive: string;
+}
+
+export interface PurchasedVoucher {
+  id:          string;
+  voucherId:   string;
+  title:       string;
+  brand:       string;
+  emoji:       string;
+  faceValue:   number;
+  costCoins:   number;
+  barcodeCode: string;
+  purchasedAt: string;
+  expiresAt:   string;
+  used:        boolean;
 }

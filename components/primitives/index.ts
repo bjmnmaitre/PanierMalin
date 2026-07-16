@@ -15,3 +15,16 @@ export type { BadgeProps, BadgeVariant, BadgeSize } from './Badge';
 
 export { default as Avatar } from './Avatar';
 export type { AvatarProps, AvatarSize, AvatarVariant } from './Avatar';
+
+export { default as Logo } from './Logo';
+export type { LogoProps, LogoVariant } from './Logo';
+
+export { default as Barcode } from './Barcode';
+export type { BarcodeProps } from './Barcode';
+
+export { default as LogoPM } from './LogoPM';
+export type { LogoPMProps } from './LogoPM';
+
+export { default as SplashOverlay } from './SplashOverlay';
+
+export { default as ErrorBoundary } from './ErrorBoundary';

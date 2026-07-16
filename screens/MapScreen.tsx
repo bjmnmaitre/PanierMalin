@@ -208,7 +208,7 @@ export default function MapScreen({ onNavigate }: MapScreenProps) {
         />
       </View>
 
-      <ModernBottomNav active="map" onNavigate={onNavigate} />
+      <ModernBottomNav active="search" onNavigate={onNavigate} />
     </View>
   );
 }

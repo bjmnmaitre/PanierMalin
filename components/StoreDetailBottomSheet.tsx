@@ -5,9 +5,7 @@ import { colors, spacing, radii, typography, shadows } from '@/design';
 import type { Store } from '@/types';
 
 export interface StoreDetailBottomSheetProps {
-  /** Magasin à afficher, ou `null` pour fermer la fiche */
   store: Store | null;
-  /** Distance à vol d'oiseau depuis la position de l'utilisateur, en km */
   distanceKm?: number;
   onClose: () => void;
 }
@@ -15,9 +13,6 @@ export interface StoreDetailBottomSheetProps {
 const SHEET_OFFSCREEN_OFFSET = 260;
 
 export default function StoreDetailBottomSheet({ store, distanceKm, onClose }: StoreDetailBottomSheetProps) {
-  // On garde le dernier magasin affiché en mémoire le temps de l'animation
-  // de fermeture, sinon le contenu disparaît d'un coup avant que la fiche
-  // ait fini de glisser hors de l'écran.
   const [visibleStore, setVisibleStore] = useState<Store | null>(store);
   const [visibleDistanceKm, setVisibleDistanceKm] = useState<number | undefined>(distanceKm);
   const translateY = useRef(new Animated.Value(store ? 0 : SHEET_OFFSCREEN_OFFSET)).current;
@@ -38,7 +33,7 @@ export default function StoreDetailBottomSheet({ store, distanceKm, onClose }: S
         useNativeDriver: true,
         tension: 68,
         friction: 11,
-      }).start(({ finished }) => {
+      }).start(({ finished }: { finished: boolean }) => {
         if (finished) {
           setVisibleStore(null);
         }
@@ -62,7 +57,7 @@ export default function StoreDetailBottomSheet({ store, distanceKm, onClose }: S
 
     if (!url) return;
 
-    Linking.openURL(url).catch((error) => {
+    Linking.openURL(url).catch((error: unknown) => {
       console.warn("[StoreDetailBottomSheet] Impossible d'ouvrir l'itinéraire", error);
     });
   };
@@ -104,7 +99,7 @@ export default function StoreDetailBottomSheet({ store, distanceKm, onClose }: S
       </View>
 
       <Pressable
-        style={({ pressed }) => [styles.itineraryButton, pressed && styles.itineraryButtonPressed]}
+        style={({ pressed }: { pressed: boolean }) => [styles.itineraryButton, pressed && styles.itineraryButtonPressed]}
         onPress={handleOpenItinerary}
         accessibilityRole="button"
         accessibilityLabel="Ouvrir l'itinéraire vers ce magasin"

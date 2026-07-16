@@ -1,9 +1,4 @@
-// screens/InviteFriendsScreen.tsx
-// 
-// RÈGLE DE TRAITEMENT : Fichier intégral et autonome.
-// Écran "Parrainage & Ambassadeur" modernisé v2.0.
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,42 +8,66 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Clipboard, // Utilisation du composant natif pour éviter les erreurs d'installation
+  Share,
+  Linking,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
-import { getMyProfile } from '../services/api';
-import { UserProfile } from '../types';
+import { ensureReferralCode } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   onBack: () => void;
 }
 
+const APP_STORE_URL = 'https://paniermalin.app'; // URL de l'appli (à adapter)
+
 export default function InviteFriendsScreen({ onBack }: Props) {
-  const { session } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { session, profile } = useAuth();
+  const insets = useSafeAreaInsets();
+  const [referralCode, setReferralCode] = useState<string>(profile?.referralCode ?? '');
+  const [loading, setLoading] = useState(!profile?.referralCode || profile.referralCode === 'TEMP');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!session) {
-      setLoading(false);
-      return;
-    }
-    getMyProfile()
-      .then((p) => setProfile(p))
-      .catch((err) => console.error('[InviteFriendsScreen] getMyProfile failed', err))
+    if (!session) { setLoading(false); return; }
+    ensureReferralCode()
+      .then((code) => setReferralCode(code))
+      .catch((err) => console.error('[InviteFriendsScreen] ensureReferralCode failed', err))
       .finally(() => setLoading(false));
   }, [session]);
 
-  const copyCode = () => {
-    if (!profile?.referralCode) return;
-    Clipboard.setString(profile.referralCode);
-    Alert.alert('Copié !', 'Ton code de parrainage a été copié.');
-  };
+  const shareMessage = `🛒 Rejoins-moi sur PanierMalin et économise jusqu'à 30% sur tes courses ! Utilise mon code **${referralCode}** à l'inscription pour un mois Premium offert.\n${APP_STORE_URL}`;
 
-  if (loading || !profile) {
+  const copyCode = useCallback(async () => {
+    if (!referralCode) return;
+    await Clipboard.setStringAsync(referralCode);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  }, [referralCode]);
+
+  const shareWhatsApp = useCallback(async () => {
+    if (!referralCode) return;
+    const url = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      Alert.alert('WhatsApp non disponible', 'WhatsApp n\'est pas installé sur cet appareil.');
+    }
+  }, [referralCode, shareMessage]);
+
+  const shareNative = useCallback(async () => {
+    if (!referralCode) return;
+    await Share.share({ message: shareMessage, title: 'PanierMalin — Invitation' });
+  }, [referralCode, shareMessage]);
+
+  if (loading) {
     return (
       <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -56,18 +75,18 @@ export default function InviteFriendsScreen({ onBack }: Props) {
     );
   }
 
-  const invitedCount = profile.invitedCount ?? 0;
-  const ambassadorGoal = profile.ambassadorGoal ?? 5;
+  const invitedCount = profile?.invitedCount ?? 0;
+  const ambassadorGoal = profile?.ambassadorGoal ?? 5;
   const progressPct = Math.min((invitedCount / ambassadorGoal) * 100, 100);
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={Typography.h2}>Parrainage</Text>
-        <TouchableOpacity style={styles.notifButton}>
+        <TouchableOpacity style={styles.notifButton} onPress={shareNative} hitSlop={8}>
           <MaterialIcons name="share" size={20} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -107,29 +126,35 @@ export default function InviteFriendsScreen({ onBack }: Props) {
           </Text>
           <View style={styles.dashedBox}>
             <Text style={[Typography.h1, { color: Colors.primary, fontSize: 28, letterSpacing: 2, fontWeight: '800' }]}>
-              {profile.referralCode ?? 'MALIN-X'}
+              {referralCode || '…'}
             </Text>
           </View>
-          <TouchableOpacity style={styles.copyButton} onPress={copyCode} activeOpacity={0.9}>
-            <MaterialIcons name="content-copy" size={18} color={Colors.white} />
-            <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>Copier le code</Text>
+          <TouchableOpacity
+            style={[styles.copyButton, copied && styles.copyButtonSuccess]}
+            onPress={copyCode}
+            activeOpacity={0.9}
+          >
+            <MaterialIcons name={copied ? 'check' : 'content-copy'} size={18} color={Colors.white} />
+            <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>
+              {copied ? 'Code copié !' : 'Copier le code'}
+            </Text>
           </TouchableOpacity>
         </View>
 
         <Text style={[Typography.h2, { marginBottom: 12, color: Colors.textPrimary }]}>Partager via</Text>
         <View style={{ gap: 10, marginBottom: 24 }}>
-          <TouchableOpacity style={[styles.shareButton, { backgroundColor: '#25D366' }]} activeOpacity={0.9}>
+          <TouchableOpacity style={[styles.shareButton, { backgroundColor: '#25D366' }]} onPress={shareWhatsApp} activeOpacity={0.9}>
             <View style={styles.shareButtonLeft}>
               <MaterialIcons name="chat" size={20} color={Colors.white} />
               <Text style={[Typography.bodyLg, { color: Colors.white, fontWeight: '600' }]}>WhatsApp</Text>
             </View>
             <MaterialIcons name="chevron-right" size={20} color={Colors.white} />
           </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.shareButton, { backgroundColor: Colors.primaryLight }]} activeOpacity={0.9}>
+
+          <TouchableOpacity style={[styles.shareButton, { backgroundColor: Colors.primaryLight }]} onPress={shareNative} activeOpacity={0.9}>
             <View style={styles.shareButtonLeft}>
-              <MaterialIcons name="sms" size={20} color={Colors.primary} />
-              <Text style={[Typography.bodyLg, { color: Colors.primary, fontWeight: '600' }]}>Message SMS</Text>
+              <MaterialIcons name="ios-share" size={20} color={Colors.primary} />
+              <Text style={[Typography.bodyLg, { color: Colors.primary, fontWeight: '600' }]}>Partager via…</Text>
             </View>
             <MaterialIcons name="chevron-right" size={20} color={Colors.primary} />
           </TouchableOpacity>
@@ -165,7 +190,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 64,
+    minHeight: 56,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -218,6 +243,9 @@ const styles = StyleSheet.create({
     borderRadius: Radii.button,
     width: '100%',
     ...Shadows.active,
+  },
+  copyButtonSuccess: {
+    backgroundColor: Colors.success,
   },
   shareButton: {
     flexDirection: 'row',

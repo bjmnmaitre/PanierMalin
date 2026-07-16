@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   onNavigate: (tab: TabKey) => void;
@@ -34,6 +35,7 @@ interface PartnerStore {
 }
 
 export default function NetworkMapScreen({ onNavigate, onSelectStore }: Props) {
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const partners: PartnerStore[] = [
@@ -51,7 +53,7 @@ export default function NetworkMapScreen({ onNavigate, onSelectStore }: Props) {
   return (
     <View style={styles.root}>
       {/* En-tête principal */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerLeft}>
           <MaterialIcons name="map" size={24} color={Colors.primary} />
           <Text style={[Typography.h1, { color: Colors.textPrimary }]}>Le Réseau</Text>
@@ -138,7 +140,7 @@ export default function NetworkMapScreen({ onNavigate, onSelectStore }: Props) {
       </ScrollView>
 
       {/* On utilise "scanner" ou un onglet dédié de ton BottomNav selon tes liaisons */}
-      <BottomNav active="scanner" onNavigate={onNavigate} />
+      <BottomNav active="search" onNavigate={onNavigate} />
     </View>
   );
 }
@@ -150,7 +152,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 60,
+    minHeight: 56,
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,

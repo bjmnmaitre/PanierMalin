@@ -1,28 +1,44 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Animated } from 'react-native';
-import * as Location from 'expo-location';
+// screens/UniversalSearchScreen.tsx
+//
+// Recherche de produits dans la base Supabase (par nom ou marque).
+// Accessible via app/search.tsx (modal depuis l'onglet "Je cherche").
+
+import React, { useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Pressable,
+  Animated,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '@/design';
 import { Card, Input, Button, Badge } from '@/components/primitives';
 import { Header } from '@/components/features';
-import { searchUniversalStores } from '@/services/api';
-import type { UniversalStoreResult } from '@/types';
+import { searchProducts } from '@/services/api';
+import type { Product } from '@/types';
 
 export interface UniversalSearchScreenProps {
   onBack: () => void;
+  onSelectProduct: (ean: string) => void;
 }
 
-const FALLBACK_REGION = {
-  latitude: 46.1601,
-  longitude: -1.1511,
-};
+const SUGGESTED_KEYWORDS = ['Lait', 'Yaourt', 'Pâtes', 'Farine', 'Céréales', 'Beurre'];
 
-const SUGGESTED_KEYWORDS = ['Boulangerie', 'Pharmacie', 'Quincaillerie', 'CBD', 'Artisan', 'Fleuriste'];
+const NUTRISCORE_COLORS: Record<string, { bg: string; text: string }> = {
+  A: { bg: '#2E7D32', text: '#FFFFFF' },
+  B: { bg: '#7CB342', text: '#FFFFFF' },
+  C: { bg: '#F9A825', text: '#FFFFFF' },
+  D: { bg: '#EF6C00', text: '#FFFFFF' },
+  E: { bg: '#C62828', text: '#FFFFFF' },
+};
 
 function AnimatedResultCard({ children }: { children: React.ReactNode }) {
   const progress = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
+  React.useEffect(() => {
     Animated.spring(progress, {
       toValue: 1,
       useNativeDriver: true,
@@ -31,7 +47,7 @@ function AnimatedResultCard({ children }: { children: React.ReactNode }) {
     }).start();
   }, [progress]);
 
-  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
 
   return (
     <Animated.View style={{ opacity: progress, transform: [{ translateY }] }}>
@@ -40,59 +56,28 @@ function AnimatedResultCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenProps) {
-  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [isLocating, setIsLocating] = useState(true);
-  const [locationDenied, setLocationDenied] = useState(false);
-
+export default function UniversalSearchScreen({
+  onBack,
+  onSelectProduct,
+}: UniversalSearchScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<UniversalStoreResult[]>([]);
+  const [results, setResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [itineraryIds, setItineraryIds] = useState<string[]>([]);
-  const [newStoreIds, setNewStoreIds] = useState<Set<string>>(new Set());
 
-  const seenStoreIdsRef = useRef<Set<string>>(new Set());
   const bannerAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setLocationDenied(true);
-          setUserCoords(FALLBACK_REGION);
-          return;
-        }
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-      } catch (error) {
-        console.warn('[UniversalSearchScreen] Géolocalisation indisponible, repli sur la position par défaut', error);
-        setUserCoords(FALLBACK_REGION);
-      } finally {
-        setIsLocating(false);
-      }
-    })();
-  }, []);
 
   const runSearch = async (keyword: string) => {
     const trimmed = keyword.trim();
-    if (!trimmed || !userCoords || isSearching) return;
+    if (!trimmed || isSearching) return;
 
     setIsSearching(true);
     setSearchError(null);
     setHasSearched(true);
 
     try {
-      const data = await searchUniversalStores(trimmed, userCoords.latitude, userCoords.longitude);
-
-      const freshIds = new Set(
-        data.filter((store) => !seenStoreIdsRef.current.has(store.id)).map((store) => store.id)
-      );
-      data.forEach((store) => seenStoreIdsRef.current.add(store.id));
-
-      setNewStoreIds(freshIds);
+      const data = await searchProducts(trimmed);
       setResults(data);
 
       if (data.length > 0) {
@@ -106,38 +91,49 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
       }
     } catch (error) {
       console.error('[UniversalSearchScreen] Recherche échouée', error);
-      setSearchError("La recherche a échoué. Réessaie dans un instant.");
+      setSearchError('La recherche a échoué. Vérifie ta connexion et réessaie.');
       setResults([]);
     } finally {
       setIsSearching(false);
     }
   };
 
-  const handleSuggestedKeyword = (keyword: string) => {
+  const handleSuggestion = (keyword: string) => {
     setSearchQuery(keyword);
     runSearch(keyword);
   };
 
-  const toggleItinerary = (id: string) => {
-    setItineraryIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
-  };
-
-  const bannerScale = bannerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  const bannerScale = bannerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
+  });
 
   return (
     <View style={styles.root}>
       <Header
-        title="Recherche universelle"
-        subtitle={itineraryIds.length > 0 ? `${itineraryIds.length} commerce(s) dans l'itinéraire` : undefined}
+        title="Recherche produits"
+        subtitle={
+          results.length > 0
+            ? `${results.length} produit${results.length > 1 ? 's' : ''} trouvé${results.length > 1 ? 's' : ''}`
+            : undefined
+        }
         onBackPress={onBack}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <Input
           leftIcon="search"
           rightIcon={searchQuery ? 'close' : undefined}
-          onRightIconPress={() => setSearchQuery('')}
-          placeholder="Boulangerie, quincaillerie, CBD, artisan..."
+          onRightIconPress={() => {
+            setSearchQuery('');
+            setResults([]);
+            setHasSearched(false);
+          }}
+          placeholder="Lait entier, Nutella, Danone…"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -145,43 +141,28 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
         <Button
           label="Rechercher"
           variant="primary"
-          icon="travel-explore"
+          icon="search"
           onPress={() => runSearch(searchQuery)}
           loading={isSearching}
-          disabled={!searchQuery.trim() || !userCoords}
+          disabled={!searchQuery.trim()}
           fullWidth
           style={styles.searchButton}
         />
 
         <View style={styles.suggestedRow}>
           {SUGGESTED_KEYWORDS.map((keyword) => (
-            <Pressable key={keyword} onPress={() => handleSuggestedKeyword(keyword)}>
+            <Pressable key={keyword} onPress={() => handleSuggestion(keyword)}>
               <Badge label={keyword} variant="info" />
             </Pressable>
           ))}
         </View>
 
-        {isLocating && (
+        {/* États vides */}
+        {!hasSearched && !isSearching && (
           <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.stateText}>Localisation en cours...</Text>
-          </Card>
-        )}
-
-        {!isLocating && locationDenied && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="gps-not-fixed" size={28} color={colors.text.tertiary} />
+            <MaterialIcons name="local-grocery-store" size={28} color={colors.text.tertiary} />
             <Text style={styles.stateText}>
-              Localisation refusée. Active-la dans les réglages pour trouver les commerces autour de toi.
-            </Text>
-          </Card>
-        )}
-
-        {!isLocating && !hasSearched && !locationDenied && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="storefront" size={28} color={colors.text.tertiary} />
-            <Text style={styles.stateText}>
-              Cherche n'importe quel type de commerce autour de toi, pas seulement les supermarchés.
+              Recherche un produit par son nom ou sa marque pour comparer les prix.
             </Text>
           </Card>
         )}
@@ -189,7 +170,7 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
         {isSearching && (
           <Card padding="lg" shadow="sm" style={styles.stateCard}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={styles.stateText}>Recherche en cours...</Text>
+            <Text style={styles.stateText}>Recherche en cours…</Text>
           </Card>
         )}
 
@@ -203,82 +184,66 @@ export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenP
         {!isSearching && hasSearched && !searchError && results.length === 0 && (
           <Card padding="lg" shadow="sm" style={styles.stateCard}>
             <MaterialIcons name="search-off" size={28} color={colors.text.tertiary} />
-            <Text style={styles.stateText}>Aucun commerce trouvé pour "{searchQuery}" à proximité.</Text>
+            <Text style={styles.stateText}>
+              Aucun produit trouvé pour "{searchQuery}".{'\n'}Essaie un autre terme.
+            </Text>
           </Card>
         )}
 
-        {!isSearching && hasSearched && !searchError && results.length > 0 && (
+        {/* Bannière résultats */}
+        {!isSearching && results.length > 0 && (
           <Animated.View
             style={[
               styles.celebrationBanner,
               { opacity: bannerAnim, transform: [{ scale: bannerScale }] },
             ]}
           >
-            <MaterialIcons name="celebration" size={18} color={colors.white} />
+            <MaterialIcons name="check-circle" size={16} color={colors.white} />
             <Text style={styles.celebrationText}>
-              {results.length} commerce{results.length > 1 ? 's' : ''} trouvé{results.length > 1 ? 's' : ''} près de toi
+              {results.length} produit{results.length > 1 ? 's' : ''} — tape pour comparer les prix
             </Text>
           </Animated.View>
         )}
 
+        {/* Résultats */}
         {!isSearching &&
-          results.map((store, index) => {
-            const inItinerary = itineraryIds.includes(store.id);
-            const isNearest = index === 0;
-            const isNew = newStoreIds.has(store.id);
+          results.map((product) => {
+            const ns = product.nutriscore;
+            const nsColors = ns ? NUTRISCORE_COLORS[ns] : null;
 
             return (
-              <AnimatedResultCard key={store.id}>
-                <Card padding="md" shadow="sm" style={styles.resultCard}>
-                  <View style={styles.resultHeaderRow}>
-                    <View style={styles.resultTitleBlock}>
-                      <Text style={styles.resultName}>{store.name}</Text>
-                      <View style={styles.badgesRow}>
-                        <Badge label={store.category} variant="info" />
-                        {isNearest && <Badge label="Le plus proche" variant="success" icon="near-me" />}
-                        {isNew && <Badge label="Nouveau" variant="warning" icon="new-releases" />}
+              <AnimatedResultCard key={product.id}>
+                <Pressable onPress={() => onSelectProduct(product.ean)}>
+                  <Card padding="md" shadow="sm" style={styles.resultCard}>
+                    <View style={styles.resultRow}>
+                      <View style={styles.resultInfo}>
+                        <Text style={styles.productName}>{product.name}</Text>
+                        {product.brand && (
+                          <Text style={styles.productBrand}>{product.brand}</Text>
+                        )}
+                        {product.category && (
+                          <Text style={styles.productCategory}>{product.category}</Text>
+                        )}
+                        <Text style={styles.productEan}>EAN {product.ean}</Text>
+                      </View>
+
+                      <View style={styles.resultRight}>
+                        {nsColors && ns && (
+                          <View style={[styles.nutriscoreBadge, { backgroundColor: nsColors.bg }]}>
+                            <Text style={[styles.nutriscoreText, { color: nsColors.text }]}>
+                              {ns}
+                            </Text>
+                          </View>
+                        )}
+                        <MaterialIcons
+                          name="chevron-right"
+                          size={22}
+                          color={colors.text.tertiary}
+                        />
                       </View>
                     </View>
-                    <Text style={styles.resultDistance}>{store.distanceKm.toFixed(1)} km</Text>
-                  </View>
-
-                  {store.address.length > 0 && (
-                    <View style={styles.infoRow}>
-                      <MaterialIcons name="place" size={16} color={colors.text.tertiary} />
-                      <Text style={styles.infoText}>{store.address}</Text>
-                    </View>
-                  )}
-
-                  {store.hours && (
-                    <View style={styles.infoRow}>
-                      <MaterialIcons name="schedule" size={16} color={colors.text.tertiary} />
-                      <Text style={styles.infoText}>{store.hours}</Text>
-                    </View>
-                  )}
-
-                  {store.phone && (
-                    <View style={styles.infoRow}>
-                      <MaterialIcons name="phone" size={16} color={colors.text.tertiary} />
-                      <Text style={styles.infoText}>{store.phone}</Text>
-                    </View>
-                  )}
-
-                  {store.website && (
-                    <View style={styles.infoRow}>
-                      <MaterialIcons name="public" size={16} color={colors.text.tertiary} />
-                      <Text style={styles.infoText} numberOfLines={1}>{store.website}</Text>
-                    </View>
-                  )}
-
-                  <Button
-                    label={inItinerary ? "Ajouté à l'itinéraire" : "Ajouter à l'itinéraire"}
-                    variant={inItinerary ? 'outline' : 'primary'}
-                    icon={inItinerary ? 'done' : 'add-road'}
-                    onPress={() => toggleItinerary(store.id)}
-                    fullWidth
-                    style={styles.itineraryButton}
-                  />
-                </Card>
+                  </Card>
+                </Pressable>
               </AnimatedResultCard>
             );
           })}
@@ -337,42 +302,47 @@ const styles = StyleSheet.create({
   },
   resultCard: {
     marginTop: spacing[3],
-    gap: spacing[2],
   },
-  resultHeaderRow: {
+  resultRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing[2],
+    alignItems: 'center',
+    gap: spacing[3],
   },
-  resultTitleBlock: {
+  resultInfo: {
     flex: 1,
     gap: spacing[1],
   },
-  resultName: {
-    ...typography.h4,
+  productName: {
+    ...typography.bodyLarge,
     color: colors.text.primary,
+    fontWeight: '600',
   },
-  badgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[1],
-  },
-  resultDistance: {
-    ...typography.labelMedium,
+  productBrand: {
+    ...typography.bodySmall,
     color: colors.primary,
+    fontWeight: '500',
   },
-  infoRow: {
-    flexDirection: 'row',
+  productCategory: {
+    ...typography.captionSmall,
+    color: colors.text.secondary,
+  },
+  productEan: {
+    ...typography.captionSmall,
+    color: colors.text.tertiary,
+  },
+  resultRight: {
     alignItems: 'center',
     gap: spacing[2],
   },
-  infoText: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-    flex: 1,
+  nutriscoreBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  itineraryButton: {
-    marginTop: spacing[2],
+  nutriscoreText: {
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

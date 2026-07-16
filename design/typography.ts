@@ -1,10 +1,21 @@
 // design/typography.ts
 // Complete typography system - Professional, accessible, modern
 // Based on 4px baseline, golden ratio for scaling
+//
+// Fonts chargées dans app/_layout.tsx :
+//   Poppins_600SemiBold  → titres display / headlines
+//   Inter_600SemiBold    → labels, captions, prix
+//   Inter_400Regular     → corps de texte
 
 import { TextStyle } from 'react-native';
 
+// Noms de familles tels qu'enregistrés par expo-font
+const POPPINS_SEMIBOLD  = 'Poppins_600SemiBold';
+const INTER_SEMIBOLD    = 'Inter_600SemiBold';
+const INTER_REGULAR     = 'Inter_400Regular';
+
 export const displayLarge: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 48,
   fontWeight: '700',
   lineHeight: 56,
@@ -12,6 +23,7 @@ export const displayLarge: TextStyle = {
 };
 
 export const displayMedium: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 40,
   fontWeight: '700',
   lineHeight: 48,
@@ -19,6 +31,7 @@ export const displayMedium: TextStyle = {
 };
 
 export const displaySmall: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 32,
   fontWeight: '700',
   lineHeight: 40,
@@ -26,6 +39,7 @@ export const displaySmall: TextStyle = {
 };
 
 export const headlineH1: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 28,
   fontWeight: '700',
   lineHeight: 36,
@@ -33,6 +47,7 @@ export const headlineH1: TextStyle = {
 };
 
 export const headlineH2: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 24,
   fontWeight: '700',
   lineHeight: 32,
@@ -40,6 +55,7 @@ export const headlineH2: TextStyle = {
 };
 
 export const headlineH3: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 20,
   fontWeight: '600',
   lineHeight: 28,
@@ -47,6 +63,7 @@ export const headlineH3: TextStyle = {
 };
 
 export const headlineH4: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 18,
   fontWeight: '600',
   lineHeight: 26,
@@ -54,6 +71,7 @@ export const headlineH4: TextStyle = {
 };
 
 export const bodyLarge: TextStyle = {
+  fontFamily: INTER_REGULAR,
   fontSize: 16,
   fontWeight: '400',
   lineHeight: 24,
@@ -61,6 +79,7 @@ export const bodyLarge: TextStyle = {
 };
 
 export const bodyMedium: TextStyle = {
+  fontFamily: INTER_REGULAR,
   fontSize: 14,
   fontWeight: '400',
   lineHeight: 20,
@@ -68,6 +87,7 @@ export const bodyMedium: TextStyle = {
 };
 
 export const bodySmall: TextStyle = {
+  fontFamily: INTER_REGULAR,
   fontSize: 12,
   fontWeight: '400',
   lineHeight: 16,
@@ -75,6 +95,7 @@ export const bodySmall: TextStyle = {
 };
 
 export const labelLarge: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 14,
   fontWeight: '600',
   lineHeight: 20,
@@ -82,6 +103,7 @@ export const labelLarge: TextStyle = {
 };
 
 export const labelMedium: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 12,
   fontWeight: '600',
   lineHeight: 16,
@@ -89,6 +111,7 @@ export const labelMedium: TextStyle = {
 };
 
 export const labelSmall: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 11,
   fontWeight: '600',
   lineHeight: 14,
@@ -96,6 +119,7 @@ export const labelSmall: TextStyle = {
 };
 
 export const captionLarge: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 12,
   fontWeight: '500',
   lineHeight: 16,
@@ -103,6 +127,7 @@ export const captionLarge: TextStyle = {
 };
 
 export const captionSmall: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 10,
   fontWeight: '500',
   lineHeight: 12,
@@ -110,6 +135,7 @@ export const captionSmall: TextStyle = {
 };
 
 export const overline: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 10,
   fontWeight: '700',
   lineHeight: 14,
@@ -117,6 +143,7 @@ export const overline: TextStyle = {
 };
 
 export const priceLarge: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 32,
   fontWeight: '700',
   lineHeight: 40,
@@ -124,6 +151,7 @@ export const priceLarge: TextStyle = {
 };
 
 export const priceMedium: TextStyle = {
+  fontFamily: POPPINS_SEMIBOLD,
   fontSize: 24,
   fontWeight: '700',
   lineHeight: 32,
@@ -131,6 +159,7 @@ export const priceMedium: TextStyle = {
 };
 
 export const priceSmall: TextStyle = {
+  fontFamily: INTER_SEMIBOLD,
   fontSize: 16,
   fontWeight: '600',
   lineHeight: 24,

@@ -1,21 +1,3 @@
-// screens/SavedBasketsScreen.tsx
-//
-// Écran "Mes paniers habituels" (paniers-modèles réoptimisables en un tap).
-// RÈGLE DE TRAITEMENT : fichier intégral et autonome, aucune troncature.
-//
-// Migration complète de `theme/` + `BottomNav` legacy vers `design/` +
-// `ModernBottomNav` + primitives (Card, Button, Badge), avec le même
-// bandeau de gamification que screens/MyListsScreen.tsx
-// (GamificationBanner) — emplacement visuel dédié niveau/points/série,
-// comme convenu.
-//
-// Correction au passage : le bouton "Lancer l'optimisation" simulait un
-// calcul local avec des setTimeout (1.2s "Analyse intelligente...", puis
-// "Calcul terminé !") sans jamais rien calculer réellement. Le vrai calcul
-// (services/api.ts: optimizeBasket / fetchOptimizationData) s'exécute déjà
-// sur l'écran app/optimize.tsx. On délègue donc simplement la navigation
-// via onOptimize(basketId) au lieu d'imiter un faux calcul ici.
-
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

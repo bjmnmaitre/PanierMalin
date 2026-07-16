@@ -11,8 +11,8 @@ export const Colors = {
   primaryLight: '#E6F9ED', // Fond de badge vert doux
   
   // Variables manquantes identifiées par le compilateur TypeScript
-  secondary: '#FF6F00',      // Orange Leclerc / Éléments d'accentuation
-  secondaryLight: '#FFF3E0', // Fond orange adouci
+  secondary: '#FF6B00',      // PM-Orange officiel
+  secondaryLight: '#FFF8F0', // PM-Cream
   tertiary: '#4F46E5',       // Violet Royal pour la communauté et le premium
   tertiaryLight: '#EEF2FF',  // Fond violet ultra-léger
   
@@ -32,4 +32,9 @@ export const Colors = {
   textMuted: '#94A3B8',
   border: '#E2E8F0',
   white: '#FFFFFF',
+
+  // Tokens PM nommés
+  pmOrange:    '#FF6B00',
+  pmCream:     '#FFF8F0',
+  pmDarkSlate: '#1A202C',
 };

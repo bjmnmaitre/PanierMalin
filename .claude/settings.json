@@ -1,4 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npx supabase *)",
+      "Bash(rm /Users/user/Desktop/PanierMalin/app/\\\\\\(tabs\\\\\\)/scanner.tsx && npx tsc --noEmit 2>&1 && echo \"ZERO ERRORS\")",
+      "Bash(npx expo *)"
+    ],
+    "additionalDirectories": [
+      "/Users/user/Desktop/PanierMalin/app/(tabs)"
+    ]
+  },
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }

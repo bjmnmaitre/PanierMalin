@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '@/design';
-import { Card } from '@/components/primitives';
+import { Card, LogoPM } from '@/components/primitives';
 import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAsync } from '@/hooks/useAsync';
@@ -12,7 +12,9 @@ import { getMyLists } from '@/services/api';
 import { formatPrice } from '@/utils/formatters';
 
 export interface HomePlaceholderScreenProps {
+  /** Navigation vers un autre onglet (barre de navigation + raccourcis) */
   onNavigate: (tab: TabKey) => void;
+  /** Ouvre le flux d'optimisation de panier (route hors-onglets `/optimize`) */
   onOptimize: () => void;
 }
 
@@ -59,7 +61,7 @@ export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePl
       subtitle: 'Comparer les prix et vérifier la fraîcheur',
       icon: 'qr-code-scanner',
       backgroundColor: colors.secondary,
-      onPress: () => onNavigate('scanner'),
+      onPress: () => router.push('/scanner' as any),
     },
     {
       key: 'map',
@@ -67,7 +69,15 @@ export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePl
       subtitle: 'Voir les magasins partenaires à proximité',
       icon: 'map',
       backgroundColor: colors.tertiary,
-      onPress: () => onNavigate('map'),
+      onPress: () => onNavigate('search'),
+    },
+    {
+      key: 'receipt',
+      title: 'Scanner un ticket',
+      subtitle: 'Gagne 50 MalinCoins par ticket analysé',
+      icon: 'receipt-long',
+      backgroundColor: '#059669',
+      onPress: () => router.push('/scan-receipt' as any),
     },
     {
       key: 'community',
@@ -81,9 +91,22 @@ export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePl
 
   return (
     <View style={styles.container}>
+
+      {/* Barre de marque fixe — safe area intégrée ici */}
+      <View style={[styles.brandBar, { paddingTop: insets.top }]}>
+        <LogoPM variant="full" size={30} />
+        <TouchableOpacity
+          onPress={() => router.push('/stats' as any)}
+          hitSlop={10}
+          style={styles.statsBtn}
+        >
+          <MaterialIcons name="bar-chart" size={22} color={colors.text.secondary} />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing[4] }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -152,7 +175,7 @@ export default function HomePlaceholderScreen({ onNavigate, onOptimize }: HomePl
         ))}
       </ScrollView>
 
-      <ModernBottomNav active="home" onNavigate={onNavigate} />
+      <ModernBottomNav active="search" onNavigate={onNavigate} />
     </View>
   );
 }
@@ -162,11 +185,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg.secondary,
   },
+  brandBar: {
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statsBtn: {
+    padding: 4,
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
     paddingBottom: spacing[8],
   },
   header: {

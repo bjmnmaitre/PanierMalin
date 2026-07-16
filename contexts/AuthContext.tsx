@@ -30,26 +30,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await getMyProfile();
       setProfile(data);
     } catch (err) {
-      console.error('[Auth] Failed to fetch profile:', err);
-      setProfile(null);
+      // Transient network errors must NOT erase the profile — the user stays logged in.
+      // Only signOut() is allowed to null the profile explicitly.
+      console.warn('[Auth] fetchProfile failed (kept existing profile):', err);
     }
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        fetchProfile();
+    // ── 1. Resolve the initial session synchronously from the stored token ──────
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      setSession(initialSession);
+      if (initialSession?.user) {
+        void fetchProfile();
       }
+      setIsLoading(false);
+    }).catch(() => {
+      // getSession failure is non-fatal — treat as unauthenticated
       setIsLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        fetchProfile();
-      } else {
+    // ── 2. Listen for auth events STRICTLY ───────────────────────────────────────
+    // CRITICAL: we only clear session on explicit SIGNED_OUT.
+    // TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION, etc. must never erase
+    // an existing session — they arrive with a valid (or null) session and we
+    // only act when that session is present.
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT') {
+        // The only code path that is allowed to erase the session.
+        setSession(null);
         setProfile(null);
+        return;
+      }
+
+      // For every other event (TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION,
+      // PASSWORD_RECOVERY…), only update when Supabase gives us a valid session.
+      // A null session here means the event is informational / not yet resolved —
+      // never clear an existing authenticated session because of it.
+      if (newSession) {
+        setSession(newSession);
+        void fetchProfile();
       }
     });
 
@@ -73,15 +92,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [supabase]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    // Eagerly clear local state before the Supabase call so the UI reacts instantly.
+    setSession(null);
     setProfile(null);
+    await supabase.auth.signOut();
   }, [supabase]);
 
   const refreshProfile = useCallback(async () => {
-    if (session?.user) {
+    // Guard: only refresh when we have a confirmed session.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
       await fetchProfile();
     }
-  }, [session, fetchProfile]);
+  }, [supabase, fetchProfile]);
 
   const value: AuthContextType = useMemo(
     () => ({

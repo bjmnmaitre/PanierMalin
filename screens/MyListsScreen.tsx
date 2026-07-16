@@ -1,330 +1,505 @@
-// screens/MyListsScreen.tsx
-// 
-// RÈGLE DE TRAITEMENT : Fichier intégral et autonome.
-// Écran "Mes Listes" de PanierMalin v2.0.
-// Gère les listes d'achat actives, archivées et l'importation intelligente par IA.
-
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  Image,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-  Modal,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Modal, Pressable, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
-import { Typography, Radii, Shadows } from '../theme/typography';
-import BottomNav, { TabKey } from '../components/BottomNav';
-import { getMyLists, createShoppingList } from '../services/api';
-import { ShoppingList } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import * as Haptics from 'expo-haptics';
+import { colors, spacing, radii, typography } from '@/design';
+import { Card, Button, Input, Badge, Avatar } from '@/components/primitives';
+import { SearchBar, GamificationBanner } from '@/components/features';
+import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAsync } from '@/hooks/useAsync';
+import { useCart } from '@/contexts/CartContext';
+import { getMyLists, getArchivedLists, createShoppingList, deleteShoppingList } from '@/services/api';
+import type { ShoppingList } from '@/types';
+import { formatPrice, formatDate } from '@/utils/formatters';
+import {
+  type HabitList,
+  type HabitOptimResult,
+  loadHabitLists,
+  createHabitList,
+  deleteHabitList,
+  touchLastUsed,
+  cartItemsToHabitItems,
+  estimateHabitListOptim,
+} from '@/services/habitListService';
 
-interface ActiveList {
-  id: string;
-  name: string;
-  itemCount: number;
-  estimatedTotal: string;
-  progress: number;
-  collaboratorAvatars?: string[];
-  extraCollaborators?: number;
-  isPrivate?: boolean;
-  doneCount: number;
-}
-
-function mapShoppingListToActiveList(list: ShoppingList): ActiveList {
-  const realAvatars = list.collaboratorAvatars ?? [];
-  const displayedAvatars = realAvatars.slice(0, 2);
-  const extraCount = realAvatars.length > 2 ? realAvatars.length - 2 : undefined;
-
-  return {
-    id: list.id,
-    name: list.name,
-    itemCount: list.itemCount,
-    doneCount: list.doneCount,
-    estimatedTotal: `${list.estimatedTotal.toFixed(2).replace('.', ',')} €`,
-    progress: list.itemCount > 0 ? list.doneCount / list.itemCount : 0,
-    isPrivate: !list.isShared,
-    collaboratorAvatars: list.isShared ? displayedAvatars : undefined,
-    extraCollaborators: list.isShared ? extraCount : undefined,
-  };
-}
-
-interface ArchivedList {
-  id: string;
-  name: string;
-  itemCount: number;
-  finishedDate: string;
-}
-
-const ARCHIVED_LISTS: ArchivedList[] = [
-  { id: 'a1', name: 'BBQ Été 2025', itemCount: 24, finishedDate: '12/08' },
-  { id: 'a2', name: 'Recettes Noël', itemCount: 15, finishedDate: '24/12' },
-];
-
-interface Props {
+export interface MyListsScreenProps {
+  /** Navigation vers un autre onglet (barre de navigation) */
   onNavigate: (tab: TabKey) => void;
+  /** Ouvre le détail d'une liste (screens/ListDetailScreen.tsx) */
   onSelectList: (id: string, name: string) => void;
 }
 
-export default function MyListsScreen({ onNavigate, onSelectList }: Props) {
-  const { session } = useAuth();
-  const [importModalVisible, setImportModalVisible] = useState<boolean>(false);
-  const [newListModalVisible, setNewListModalVisible] = useState<boolean>(false);
-  const [newListName, setNewListName] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeLists, setActiveLists] = useState<ActiveList[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [submitting, setSubmitting] = useState<boolean>(false);
+export default function MyListsScreen({ onNavigate, onSelectList }: MyListsScreenProps) {
+  const insets = useSafeAreaInsets();
+  const { session, profile, isLoading: isProfileLoading } = useAuth();
+  const cart = useCart();
 
-  const fetchLists = () => {
-    if (!session) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    getMyLists()
-      .then((lists) => setActiveLists(lists.map(mapShoppingListToActiveList)))
-      .catch((err) => console.error('[MyListsScreen] getMyLists failed', err))
-      .finally(() => setLoading(false));
-  };
+  const [searchQuery, setSearchQuery] = useState('');
+  const [newListModalVisible, setNewListModalVisible] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // ── Listes d'Habitudes ──────────────────────────────────────────────────────
+  const [habitLists, setHabitLists]         = useState<HabitList[]>([]);
+  const [habitOptims, setHabitOptims]       = useState<Record<string, HabitOptimResult>>({});
+  const [habitLoading, setHabitLoading]     = useState(true);
+  const [loadingCartId, setLoadingCartId]   = useState<string | null>(null);
+  const [habitModal, setHabitModal]         = useState(false);
+  const [habitTitle, setHabitTitle]         = useState('');
+  const [habitEmoji, setHabitEmoji]         = useState('🛒');
+  const [habitFromCart, setHabitFromCart]   = useState(false);
+  const [habitSubmitting, setHabitSubmitting] = useState(false);
+
+  const EMOJIS = ['🛒', '☕', '🥂', '🍕', '🌿', '🎉', '🥗', '🏠'] as const;
+
+  const {
+    data: activeLists,
+    isLoading: isActiveLoading,
+    execute: refetchActiveLists,
+  } = useAsync<ShoppingList[]>(getMyLists, false);
+
+  const {
+    data: archivedLists,
+    isLoading: isArchivedLoading,
+    execute: refetchArchivedLists,
+  } = useAsync<ShoppingList[]>(getArchivedLists, false);
 
   useEffect(() => {
-    fetchLists();
+    if (session) {
+      refetchActiveLists();
+      refetchArchivedLists();
+    }
   }, [session]);
+
+  useEffect(() => {
+    loadHabitLists()
+      .then((lists) => {
+        setHabitLists(lists);
+        const optims: Record<string, HabitOptimResult> = {};
+        for (const list of lists) {
+          if (list.items.length > 0) optims[list.id] = estimateHabitListOptim(list);
+        }
+        setHabitOptims(optims);
+      })
+      .finally(() => setHabitLoading(false));
+  }, []);
+
+  const filteredActiveLists = useMemo(() => {
+    const lists = activeLists ?? [];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return lists;
+    return lists.filter((list) => list.name.toLowerCase().includes(query));
+  }, [activeLists, searchQuery]);
 
   const handleCreateList = async () => {
     if (!newListName.trim() || submitting) return;
-    
     try {
       setSubmitting(true);
       await createShoppingList(newListName.trim());
       setNewListName('');
       setNewListModalVisible(false);
-      fetchLists();
-    } catch (err) {
-      console.error('[MyListsScreen] createShoppingList failed', err);
+      refetchActiveLists();
+    } catch (error) {
+      console.error('[MyListsScreen] createShoppingList a échoué', error);
       Alert.alert('Erreur', 'Impossible de créer la liste pour le moment.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleImportAction = (type: 'camera' | 'link' | 'chat') => {
-    setImportModalVisible(false);
-    switch (type) {
-      case 'camera':
-        console.log('Action déclenchée : Import Caméra / Photo');
-        break;
-      case 'link':
-        console.log('Action déclenchée : Import via Lien URL');
-        break;
-      case 'chat':
-        console.log('Action déclenchée : Import par Description textuelle');
-        break;
+  const handleDeleteList = (list: ShoppingList) => {
+    Alert.alert(
+      'Supprimer la liste ?',
+      `"${list.name}" sera définitivement supprimée.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingId(list.id);
+              await deleteShoppingList(list.id);
+              refetchActiveLists();
+            } catch (err) {
+              console.error('[MyListsScreen] deleteShoppingList a échoué', err);
+              Alert.alert('Erreur', 'Impossible de supprimer cette liste.');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCloseModal = () => {
+    if (!submitting) {
+      setNewListModalVisible(false);
     }
   };
 
-  const filteredLists = activeLists.filter(list => 
-    list.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // ── Handlers Listes d'Habitudes ─────────────────────────────────────────────
+
+  const handleLoadToCart = useCallback(async (list: HabitList) => {
+    if (loadingCartId) return;
+    setLoadingCartId(list.id);
+    try {
+      for (const item of list.items) {
+        for (let i = 0; i < item.quantity; i++) {
+          cart.addItem(item.name);
+        }
+      }
+      await touchLastUsed(list.id);
+      setHabitLists((prev) => prev.map((l) => l.id === list.id ? { ...l, lastUsed: new Date().toISOString() } : l));
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Chargé !', `${list.items.length} article${list.items.length > 1 ? 's' : ''} ajouté${list.items.length > 1 ? 's' : ''} au panier.`);
+    } finally {
+      setLoadingCartId(null);
+    }
+  }, [cart, loadingCartId]);
+
+  const handleDeleteHabit = useCallback((list: HabitList) => {
+    Alert.alert(
+      'Supprimer la liste d\'habitude ?',
+      `"${list.title}" sera supprimée.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer', style: 'destructive',
+          onPress: async () => {
+            await deleteHabitList(list.id);
+            setHabitLists((prev) => prev.filter((l) => l.id !== list.id));
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          },
+        },
+      ],
+    );
+  }, []);
+
+  const handleCreateHabit = useCallback(async () => {
+    if (!habitTitle.trim() || habitSubmitting) return;
+    setHabitSubmitting(true);
+    try {
+      const items = habitFromCart && cart.items.length > 0
+        ? cartItemsToHabitItems(cart.items)
+        : [];
+      const newList = await createHabitList({ title: habitTitle.trim(), emoji: habitEmoji, items });
+      setHabitLists((prev) => [...prev, newList]);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setHabitModal(false);
+      setHabitTitle(''); setHabitEmoji('🛒'); setHabitFromCart(false);
+    } finally {
+      setHabitSubmitting(false);
+    }
+  }, [habitTitle, habitEmoji, habitFromCart, habitSubmitting, cart.items]);
 
   return (
-    <View style={styles.root}>
-      {/* En-tête principal */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }}
-            style={styles.profileAvatar}
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing[4] }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Avatar
+            size="md"
+            name={profile?.displayName}
+            source={profile?.avatarUrl ? { uri: profile.avatarUrl } : undefined}
           />
-          <Text style={[Typography.h1, { color: Colors.primary }]}>Mes Listes</Text>
+          <Text style={styles.headerTitle}>Mes listes</Text>
         </View>
-        <TouchableOpacity style={styles.notifButton} activeOpacity={0.7}>
-          <MaterialIcons name="notifications" size={24} color={Colors.textSecondary} />
-        </TouchableOpacity>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* Barre de recherche locale et bouton de création */}
+        <GamificationBanner
+          sentinelLevel={profile?.sentinelLevel}
+          totalPoints={profile?.totalPoints}
+          loading={isProfileLoading}
+        />
+
+        {/* ── Listes d'Habitudes ─────────────────────────────── */}
+        <View style={styles.habitSection}>
+          <View style={styles.habitHeaderRow}>
+            <Text style={styles.habitSectionTitle}>🔁 Mes Habitudes</Text>
+            <TouchableOpacity
+              style={styles.habitAddBtn}
+              onPress={() => setHabitModal(true)}
+              hitSlop={8}
+            >
+              <MaterialIcons name="add" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {habitLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing[3] }} />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.habitScroll}
+            >
+              {habitLists.map((list) => {
+                const isLoading = loadingCartId === list.id;
+                return (
+                  <Pressable
+                    key={list.id}
+                    style={styles.habitCard}
+                    onLongPress={() => handleDeleteHabit(list)}
+                  >
+                    <Text style={styles.habitEmoji}>{list.emoji}</Text>
+                    <Text style={styles.habitTitle} numberOfLines={1}>{list.title}</Text>
+                    <Text style={styles.habitMeta}>
+                      {list.items.length} article{list.items.length > 1 ? 's' : ''}
+                    </Text>
+                    {habitOptims[list.id] && (
+                      <View style={styles.optimBadge}>
+                        <MaterialIcons name="local-offer" size={9} color="#1D9E75" />
+                        <Text style={styles.optimBadgeTxt}>
+                          {habitOptims[list.id].bestStore} · {habitOptims[list.id].totalCost.toFixed(2)} €
+                        </Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.habitLoadBtn, isLoading && styles.habitLoadBtnLoading]}
+                      onPress={() => { void handleLoadToCart(list); }}
+                      disabled={isLoading}
+                      activeOpacity={0.8}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <MaterialIcons name="shopping-cart" size={14} color="#FFFFFF" />
+                          <Text style={styles.habitLoadTxt}>Charger</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </Pressable>
+                );
+              })}
+
+              {/* Carte "Créer" */}
+              <TouchableOpacity style={styles.habitCardAdd} onPress={() => setHabitModal(true)}>
+                <MaterialIcons name="add-circle-outline" size={28} color="#CBD5E1" />
+                <Text style={styles.habitCardAddTxt}>Nouvelle{'\n'}liste</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+
         <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <MaterialIcons name="search" size={20} color={Colors.textSecondary} />
-            <TextInput 
-              placeholder="Rechercher une liste..." 
-              style={styles.searchInput} 
-              placeholderTextColor={Colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+          <View style={styles.searchBarFlex}>
+            <SearchBar placeholder="Rechercher une liste…" value={searchQuery} onChangeText={setSearchQuery} />
           </View>
-          <TouchableOpacity style={styles.newButton} onPress={() => setNewListModalVisible(true)} activeOpacity={0.85}>
-            <MaterialIcons name="add" size={18} color={Colors.white} />
-            <Text style={styles.newButtonText}>Créer</Text>
-          </TouchableOpacity>
+          <Button label="Créer" icon="add" size="md" onPress={() => setNewListModalVisible(true)} />
         </View>
 
-        {/* Module d'importation magique par IA */}
-        <TouchableOpacity style={[styles.importButton, Shadows.soft]} onPress={() => setImportModalVisible(true)} activeOpacity={0.8}>
-          <MaterialIcons name="auto-awesome" size={20} color={Colors.primary} />
-          <Text style={styles.importButtonText}>Scanner un ticket ou une recette IA</Text>
-        </TouchableOpacity>
+        <View style={styles.aiTeaserCard}>
+          <View style={styles.aiTeaserIconContainer}>
+            <MaterialIcons name="auto-awesome" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.aiTeaserTextBlock}>
+            <Text style={styles.aiTeaserTitle}>Importer une liste par IA</Text>
+            <Text style={styles.aiTeaserSubtitle}>Ticket de caisse, recette ou simple description — bientôt disponible.</Text>
+          </View>
+          <Badge label="Bientôt" variant="secondary" size="sm" />
+        </View>
 
-        {/* Section Listes Actives */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={[Typography.bodyLg, { fontWeight: '700', color: Colors.textPrimary }]}>Listes en cours</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>
-              {filteredLists.length} active{filteredLists.length > 1 ? 's' : ''}
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>Listes en cours</Text>
+          <Badge
+            label={`${filteredActiveLists.length} active${filteredActiveLists.length > 1 ? 's' : ''}`}
+            variant="info"
+            size="sm"
+          />
         </View>
 
-        {loading ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginVertical: 32 }} />
+        {isActiveLoading ? (
+          <ActivityIndicator color={colors.primary} style={styles.loadingIndicator} />
+        ) : filteredActiveLists.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'Aucune liste ne correspond à ta recherche.' : "Aucune liste active pour l'instant — crée la première !"}
+          </Text>
         ) : (
-          <View style={styles.listsGridContainer}>
-            {filteredLists.map((list) => (
-              <TouchableOpacity 
-                key={list.id} 
-                style={styles.listCard} 
-                activeOpacity={0.85}
-                onPress={() => onSelectList(list.id, list.name)}
-              >
-                <View style={styles.listCardTopRow}>
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={styles.listNameText} numberOfLines={1}>{list.name}</Text>
-                    <View style={styles.listMetaRow}>
-                      <Text style={Typography.caption}>{list.itemCount} articles</Text>
-                      <View style={styles.dotSeparator} />
-                      <Text style={styles.estimatedTotalText}>
-                        Est. {list.estimatedTotal}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  {list.isPrivate ? (
-                    <MaterialIcons name="lock" size={18} color={Colors.textSecondary} style={{ marginTop: 2 }} />
-                  ) : (
-                    <View style={styles.avatarStack}>
-                      {list.collaboratorAvatars?.map((uri, i) => (
-                        <Image key={i} source={{ uri }} style={[styles.collabAvatar, { marginLeft: i > 0 ? -8 : 0 }]} />
-                      ))}
-                      {list.extraCollaborators && (
-                        <View style={[styles.extraAvatarBadge, { marginLeft: -8 }]}>
-                          <Text style={styles.extraCollaboratorsText}>
-                            +{list.extraCollaborators}
+          <View style={styles.listsContainer}>
+            {filteredActiveLists.map((list) => {
+              const progress = list.itemCount > 0 ? list.doneCount / list.itemCount : 0;
+              const extraCollaborators = (list.collaboratorAvatars?.length ?? 0) - 2;
+
+              const isDeleting = deletingId === list.id;
+              return (
+                <Pressable
+                  key={list.id}
+                  onPress={() => !isDeleting && onSelectList(list.id, list.name)}
+                  onLongPress={() => !isDeleting && handleDeleteList(list)}
+                >
+                  <Card
+                    padding="md"
+                    shadow="sm"
+                    style={isDeleting ? { ...styles.listCard, ...styles.listCardDeleting } : styles.listCard}
+                  >
+                    {isDeleting && (
+                      <ActivityIndicator
+                        color={colors.error}
+                        size="small"
+                        style={styles.deletingIndicator}
+                      />
+                    )}
+                    <View style={styles.listCardTopRow}>
+                      <View style={styles.listCardInfo}>
+                        <Text style={isDeleting ? [styles.listName, styles.listNameDeleting] : styles.listName} numberOfLines={1}>
+                          {list.name}
+                        </Text>
+                        <View style={styles.listMetaRow}>
+                          <Text style={styles.listMetaText}>
+                            {list.itemCount} article{list.itemCount > 1 ? 's' : ''}
                           </Text>
+                          <View style={styles.dotSeparator} />
+                          <Text style={styles.listMetaTotal}>Est. {formatPrice(list.estimatedTotal)}</Text>
                         </View>
+                      </View>
+
+                      {list.isShared && list.collaboratorAvatars && list.collaboratorAvatars.length > 0 ? (
+                        <View style={styles.avatarStack}>
+                          {list.collaboratorAvatars.slice(0, 2).map((uri, index) => (
+                            <View key={uri + index} style={[styles.avatarStackItem, index > 0 && styles.avatarStackItemOverlap]}>
+                              <Avatar size="xs" source={{ uri }} />
+                            </View>
+                          ))}
+                          {extraCollaborators > 0 && (
+                            <View style={[styles.avatarStackItem, styles.avatarStackItemOverlap]}>
+                              <Badge label={`+${extraCollaborators}`} variant="secondary" size="sm" />
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <MaterialIcons name="lock-outline" size={18} color={colors.text.tertiary} />
                       )}
                     </View>
-                  )}
-                </View>
 
-                <View style={styles.listProgressRow}>
-                  <Text style={styles.progressLabel}>Progression</Text>
-                  <Text style={styles.progressCount}>
-                    {list.doneCount}/{list.itemCount}
-                  </Text>
-                </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${list.progress * 100}%` }]} />
-                </View>
-              </TouchableOpacity>
-            ))}
+                    <View style={styles.progressRow}>
+                      <Text style={styles.progressLabel}>Progression</Text>
+                      <Text style={styles.progressCount}>
+                        {list.doneCount}/{list.itemCount}
+                      </Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+                    </View>
+                  </Card>
+                </Pressable>
+              );
+            })}
           </View>
         )}
 
-        {/* Section Listes Archivées */}
-        <View style={[styles.sectionHeaderRow, { marginTop: 12 }]}>
-          <Text style={[Typography.bodyLg, { fontWeight: '700', color: Colors.textPrimary }]}>Historique de paniers</Text>
-          <TouchableOpacity activeOpacity={0.7}>
-            <Text style={styles.seeAllText}>Tout voir</Text>
-          </TouchableOpacity>
+        <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSpaced]}>
+          <Text style={styles.sectionTitle}>Historique de listes</Text>
         </View>
-        <View style={styles.listsGridContainer}>
-          {ARCHIVED_LISTS.map((list) => (
-            <View key={list.id} style={styles.archivedCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.archivedNameText} numberOfLines={1}>{list.name}</Text>
-                <Text style={Typography.caption}>{list.itemCount} articles · Clôturée le {list.finishedDate}</Text>
-              </View>
-              <TouchableOpacity style={styles.replayButton} activeOpacity={0.7}>
-                <MaterialIcons name="replay" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
+
+        {isArchivedLoading ? (
+          <ActivityIndicator color={colors.primary} style={styles.loadingIndicator} />
+        ) : !archivedLists || archivedLists.length === 0 ? (
+          <Text style={styles.emptyText}>Aucune liste clôturée pour l'instant.</Text>
+        ) : (
+          <View style={styles.listsContainer}>
+            {archivedLists.map((list) => (
+              <Card key={list.id} padding="md" shadow="none" style={styles.archivedCard}>
+                <View style={styles.archivedCardInfo}>
+                  <Text style={styles.archivedName} numberOfLines={1}>
+                    {list.name}
+                  </Text>
+                  <Text style={styles.archivedMeta}>
+                    {list.itemCount} article{list.itemCount > 1 ? 's' : ''}
+                    {list.createdAt ? ` · Créée le ${formatDate(list.createdAt)}` : ''}
+                  </Text>
+                </View>
+                <MaterialIcons name="history" size={20} color={colors.text.tertiary} />
+              </Card>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
-      <BottomNav active="lists" onNavigate={onNavigate} />
+      <ModernBottomNav active="lists" onNavigate={onNavigate} />
 
-      {/* Pop-up : Création d'une nouvelle liste */}
-      <Modal visible={newListModalVisible} transparent animationType="fade" onRequestClose={() => !submitting && setNewListModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => !submitting && setNewListModalVisible(false)} />
-        <View style={styles.centeredModalContent}>
-          <Text style={[styles.modalTitle, { marginBottom: 16 }]}>Nouvelle liste</Text>
-          <TextInput
-            placeholder="Nom de la liste (ex: Courses de la semaine)"
-            style={styles.modalInput}
-            placeholderTextColor={Colors.textSecondary}
-            value={newListName}
-            onChangeText={setNewListName}
-            editable={!submitting}
-            autoFocus
-          />
-          <View style={styles.modalButtonRow}>
-            <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#F1F5F9' }]} onPress={() => setNewListModalVisible(false)} disabled={submitting}>
-              <Text style={[Typography.bodyMd, { color: Colors.textPrimary, fontWeight: '600' }]}>Annuler</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalButton, { backgroundColor: Colors.primary }]} onPress={handleCreateList} disabled={submitting}>
-              {submitting ? (
-                <ActivityIndicator color={Colors.white} size="small" />
-              ) : (
-                <Text style={[Typography.bodyMd, { color: Colors.white, fontWeight: '600' }]}>Créer</Text>
-              )}
-            </TouchableOpacity>
+      {/* ── Modal Création d'Habitude ──────────────────────────── */}
+      <Modal visible={habitModal} transparent animationType="slide" onRequestClose={() => setHabitModal(false)}>
+        <View style={styles.habitModalRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !habitSubmitting && setHabitModal(false)} />
+          <View style={styles.habitModalContent}>
+            <View style={styles.habitModalHandle} />
+            <Text style={styles.modalTitle}>Nouvelle liste d'habitude</Text>
+
+            {/* Sélecteur emoji */}
+            <View style={styles.emojiRow}>
+              {EMOJIS.map((e) => (
+                <TouchableOpacity
+                  key={e}
+                  style={[styles.emojiBtn, habitEmoji === e && styles.emojiBtnActive]}
+                  onPress={() => { setHabitEmoji(e); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                >
+                  <Text style={styles.emojiTxt}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Input
+              placeholder="Nom de la liste *"
+              value={habitTitle}
+              onChangeText={setHabitTitle}
+              disabled={habitSubmitting}
+            />
+
+            {cart.items.length > 0 && (
+              <TouchableOpacity
+                style={styles.fromCartRow}
+                onPress={() => { setHabitFromCart(!habitFromCart); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.fromCartCheck, habitFromCart && styles.fromCartCheckActive]}>
+                  {habitFromCart && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+                </View>
+                <Text style={styles.fromCartTxt}>
+                  Importer mon panier actuel ({cart.items.length} article{cart.items.length > 1 ? 's' : ''})
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.modalButtonRow}>
+              <View style={styles.modalButtonFlex}>
+                <Button label="Annuler" variant="outline" onPress={() => setHabitModal(false)} disabled={habitSubmitting} fullWidth />
+              </View>
+              <View style={styles.modalButtonFlex}>
+                <Button label="Créer" variant="primary" onPress={handleCreateHabit} loading={habitSubmitting} fullWidth />
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* Tiroir d'Import Intelligent (Bottom Sheet) */}
-      <Modal visible={importModalVisible} transparent animationType="slide" onRequestClose={() => setImportModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setImportModalVisible(false)} />
-        <View style={styles.bottomSheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Assistant d'importation IA</Text>
-            <Text style={styles.sheetSubtitle}>
-              Notre IA extrait instantanément vos ingrédients et trouve les magasins les moins chers aux alentours.
-            </Text>
+      <Modal visible={newListModalVisible} transparent animationType="fade" onRequestClose={handleCloseModal}>
+        <View style={styles.modalRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleCloseModal} />
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nouvelle liste</Text>
+            <Input
+              placeholder="Ex : Courses de la semaine"
+              value={newListName}
+              onChangeText={setNewListName}
+              disabled={submitting}
+            />
+            <View style={styles.modalButtonRow}>
+              <View style={styles.modalButtonFlex}>
+                <Button label="Annuler" variant="outline" onPress={handleCloseModal} disabled={submitting} fullWidth />
+              </View>
+              <View style={styles.modalButtonFlex}>
+                <Button label="Créer" variant="primary" onPress={handleCreateList} loading={submitting} fullWidth />
+              </View>
+            </View>
           </View>
-
-          {[
-            { icon: 'photo-camera' as const, title: 'Prendre un ticket ou une liste en photo', subtitle: 'Analyse et numérisation instantanée', type: 'camera' as const },
-            { icon: 'link' as const, title: 'Importer depuis un lien de recette', subtitle: 'Coller une URL Marmiton, 750g, Chefclub...', type: 'link' as const },
-            { icon: 'chat-bubble' as const, title: 'Saisir ou dicter un repas complet', subtitle: 'Ex : "Ingrédients pour des lasagnes de boeuf pour 6"', type: 'chat' as const },
-          ].map((option) => (
-            <TouchableOpacity key={option.title} style={styles.importOption} activeOpacity={0.75} onPress={() => handleImportAction(option.type)}>
-              <View style={styles.importOptionIcon}>
-                <MaterialIcons name={option.icon} size={20} color={Colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.optionTitle}>{option.title}</Text>
-                <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity style={styles.cancelButton} onPress={() => setImportModalVisible(false)} activeOpacity={0.7}>
-            <Text style={[Typography.bodyMd, { color: Colors.textSecondary, fontWeight: '600' }]}>Fermer</Text>
-          </TouchableOpacity>
         </View>
       </Modal>
     </View>
@@ -332,186 +507,309 @@ export default function MyListsScreen({ onNavigate, onSelectList }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg.secondary,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[8],
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    height: 60,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    gap: spacing[3],
+    marginBottom: spacing[4],
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  profileAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.border },
-  notifButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F5F5F5',
+  headerTitle: {
+    ...typography.h1,
+    color: colors.text.primary,
+  },
+  searchRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing[2],
+    marginBottom: spacing[3],
   },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
-  searchRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  searchBox: {
+  searchBarFlex: {
     flex: 1,
+  },
+  aiTeaserCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.card,
-    height: 44,
-    paddingHorizontal: 12,
+    gap: spacing[3],
+    backgroundColor: colors.primary_light,
+    borderRadius: radii.xl,
+    padding: spacing[3],
+    marginBottom: spacing[5],
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border.light,
   },
-  searchInput: { flex: 1, fontSize: 14, color: Colors.textPrimary, fontWeight: '500' },
-  newButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.primary,
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: Radii.card,
-  },
-  newButtonText: { fontSize: 13, fontWeight: '700', color: Colors.white },
-  importButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radii.card,
-    paddingVertical: 14,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.15)',
-  },
-  importButtonText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  seeAllText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
-  countBadge: { backgroundColor: '#E2E8F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  countBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary },
-  listsGridContainer: { gap: 10 },
-  listCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.card,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  listCardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  listNameText: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-  listMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  dotSeparator: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: Colors.textSecondary, opacity: 0.4 },
-  estimatedTotalText: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
-  avatarStack: { flexDirection: 'row', alignItems: 'center' },
-  collabAvatar: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: Colors.surface, backgroundColor: Colors.border },
-  extraAvatarBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: Colors.secondaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.surface,
-  },
-  extraCollaboratorsText: { fontSize: 10, fontWeight: '700', color: Colors.secondary },
-  listProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  progressLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
-  progressCount: { fontSize: 12, color: Colors.textPrimary, fontWeight: '700' },
-  progressTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 3 },
-  archivedCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.card,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  archivedNameText: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
-  replayButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-  },
-  centeredModalContent: {
-    backgroundColor: Colors.background,
-    borderRadius: 20,
-    padding: 20,
-    marginHorizontal: 24,
-    marginTop: '45%',
-    ...Shadows.soft,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
-  modalInput: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radii.card,
-    paddingHorizontal: 14,
-    height: 46,
-    fontSize: 15,
-    color: Colors.textPrimary,
-    marginBottom: 20,
-  },
-  modalButtonRow: { flexDirection: 'row', gap: 10 },
-  modalButton: { flex: 1, height: 44, borderRadius: Radii.card, alignItems: 'center', justifyContent: 'center' },
-  bottomSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 34,
-    ...Shadows.active,
-  },
-  sheetHandle: { width: 40, height: 5, borderRadius: 2.5, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: 20 },
-  sheetHeader: { alignItems: 'center', marginBottom: 20, paddingHorizontal: 12 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary, marginBottom: 6 },
-  sheetSubtitle: { fontSize: 12, color: Colors.textSecondary, textAlign: 'center', lineHeight: 18, fontWeight: '500' },
-  importOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  importOptionIcon: {
+  aiTeaserIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 10,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
+    borderRadius: radii.lg,
+    backgroundColor: colors.white,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  optionTitle: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
-  optionSubtitle: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500', marginTop: 1 },
-  cancelButton: { alignItems: 'center', paddingTop: 14, marginTop: 4 },
+  aiTeaserTextBlock: {
+    flex: 1,
+  },
+  aiTeaserTitle: {
+    ...typography.labelLarge,
+    color: colors.text.primary,
+  },
+  aiTeaserSubtitle: {
+    ...typography.captionLarge,
+    color: colors.text.secondary,
+    marginTop: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[3],
+  },
+  sectionHeaderRowSpaced: {
+    marginTop: spacing[2],
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+  },
+  loadingIndicator: {
+    marginVertical: spacing[6],
+  },
+  emptyText: {
+    ...typography.bodyMedium,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing[5],
+  },
+  listsContainer: {
+    gap: spacing[3],
+    marginBottom: spacing[2],
+  },
+  listCard: {
+    width: '100%',
+  },
+  listCardDeleting: {
+    opacity: 0.5,
+  },
+  deletingIndicator: {
+    alignSelf: 'flex-end',
+    marginBottom: spacing[1],
+  },
+  listNameDeleting: {
+    color: colors.text.tertiary,
+  },
+  listCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing[3],
+  },
+  listCardInfo: {
+    flex: 1,
+    paddingRight: spacing[2],
+  },
+  listName: {
+    ...typography.labelLarge,
+    color: colors.text.primary,
+  },
+  listMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    marginTop: 3,
+  },
+  listMetaText: {
+    ...typography.captionLarge,
+    color: colors.text.secondary,
+  },
+  listMetaTotal: {
+    ...typography.captionLarge,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  dotSeparator: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.text.tertiary,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarStackItem: {
+    borderWidth: 2,
+    borderColor: colors.white,
+    borderRadius: radii.full,
+  },
+  avatarStackItemOverlap: {
+    marginLeft: -8,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[1],
+  },
+  progressLabel: {
+    ...typography.captionLarge,
+    color: colors.text.secondary,
+  },
+  progressCount: {
+    ...typography.captionLarge,
+    color: colors.text.primary,
+    fontWeight: '700',
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: colors.gray[200],
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+  archivedCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  archivedCardInfo: {
+    flex: 1,
+    paddingRight: spacing[2],
+  },
+  archivedName: {
+    ...typography.labelMedium,
+    color: colors.text.secondary,
+  },
+  archivedMeta: {
+    ...typography.captionLarge,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  // ── Listes d'Habitudes ────────────────────────────────────────────────────
+  habitSection: { marginBottom: spacing[4] },
+  habitHeaderRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: spacing[3],
+  },
+  habitSectionTitle: { ...typography.h3, color: colors.text.primary },
+  habitAddBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: colors.primary_light,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  habitScroll: { gap: spacing[3], paddingRight: spacing[4] },
+  habitCard: {
+    width: 150, borderRadius: radii.xl,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: colors.border.light,
+    padding: spacing[4], gap: spacing[2],
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+  },
+  habitEmoji: { fontSize: 28 },
+  habitTitle: { ...typography.labelLarge, color: colors.text.primary },
+  habitMeta:  { ...typography.captionLarge, color: colors.text.secondary },
+  habitLoadBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing[1], backgroundColor: colors.primary,
+    borderRadius: radii.md, height: 34, marginTop: spacing[1],
+  },
+  habitLoadBtnLoading: { opacity: 0.7 },
+  habitLoadTxt: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  habitCardAdd: {
+    width: 100, borderRadius: radii.xl,
+    borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center',
+    gap: spacing[1], padding: spacing[4],
+  },
+  habitCardAddTxt: {
+    ...typography.captionLarge, color: '#94A3B8', textAlign: 'center',
+  },
+
+  // ── Modal Habitude ─────────────────────────────────────────────────────────
+  habitModalContent: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radii['2xl'], borderTopRightRadius: radii['2xl'],
+    padding: spacing[5], gap: spacing[4],
+  },
+  habitModalHandle: {
+    width: 36, height: 4, backgroundColor: '#CBD5E1',
+    borderRadius: 2, alignSelf: 'center', marginBottom: spacing[2],
+  },
+  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
+  emojiBtn: {
+    width: 42, height: 42, borderRadius: radii.lg,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+  },
+  emojiBtnActive: { backgroundColor: colors.primary_light, borderWidth: 2, borderColor: colors.primary },
+  emojiTxt: { fontSize: 20 },
+  fromCartRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing[3],
+    backgroundColor: '#F8FAFC', borderRadius: radii.lg,
+    padding: spacing[3],
+  },
+  fromCartCheck: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: '#CBD5E1',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  fromCartCheckActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  fromCartTxt: { ...typography.bodyMedium, color: colors.text.primary, flex: 1 },
+
+  habitModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+  },
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    paddingHorizontal: spacing[6],
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderRadius: radii['2xl'],
+    padding: spacing[5],
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing[4],
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: spacing[3],
+    marginTop: spacing[4],
+  },
+  modalButtonFlex: {
+    flex: 1,
+  },
+
+  optimBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#ECFDF5', borderRadius: 8,
+    paddingHorizontal: 5, paddingVertical: 2, marginTop: 4, alignSelf: 'flex-start',
+  },
+  optimBadgeTxt: { fontSize: 8, fontWeight: '700', color: '#059669' },
 });

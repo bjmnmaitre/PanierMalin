@@ -12,13 +12,18 @@ export const PRIMARY_DARK = '#00796B';
 export const PRIMARY_DARKER = '#004D40';
 
 /**
- * Secondary brand color - Orange (rewards, energy, gamification)
+ * Secondary brand color - PM-Orange (rewards, energy, gamification)
  * Used for: Badges, streaks, premium features, achievements
  */
-export const SECONDARY = '#FF6F00';
-export const SECONDARY_LIGHT = '#FFE0B2';
+export const SECONDARY = '#FF6B00';          // PM-Orange officiel
+export const SECONDARY_LIGHT = '#FFF8F0';    // PM-Cream (fond chaud)
 export const SECONDARY_DARK = '#E65100';
 export const SECONDARY_DARKER = '#BF360C';
+
+/**
+ * Dark Slate - Fonds premium admin/splash
+ */
+export const DARK_SLATE = '#1A202C';         // PM-DarkSlate
 
 /**
  * Tertiary brand color - Blue (community, trust, social)
@@ -151,6 +156,11 @@ export const colors = {
   white: '#FFFFFF',
   black: '#000000',
   transparent: 'transparent',
+
+  // Tokens PM nommés (pour référence explicite dans les écrans)
+  pmOrange:    SECONDARY,          // '#FF6B00'
+  pmCream:     SECONDARY_LIGHT,    // '#FFF8F0'
+  pmDarkSlate: DARK_SLATE,         // '#1A202C'
 };
 
 /**

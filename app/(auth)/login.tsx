@@ -3,12 +3,13 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; // Import corrigé ici
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors } from '../../theme/colors';
 import { Typography, Radii, Shadows } from '../../theme/typography';
+import Logo from '@/components/primitives/Logo';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -47,8 +48,8 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <View style={[styles.iconWrap, Shadows.soft]}>
-            <Ionicons name="basket" size={32} color={Colors.primary} />
+          <View style={styles.iconWrap}>
+            <Logo size={56} />
           </View>
           <Text style={[Typography.h1, styles.title]}>Content de te revoir !</Text>
           <Text style={[Typography.bodyMd, styles.subtitle]}>
@@ -184,8 +185,7 @@ const styles = StyleSheet.create({
   blobBottom: { width: 160, height: 160, backgroundColor: Colors.secondaryLight, bottom: 40, left: -60 },
   header: { alignItems: 'center', marginBottom: 32 },
   iconWrap: {
-    width: 64, height: 64, borderRadius: Radii.card,
-    backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   title: { textAlign: 'center', marginBottom: 4 },
   subtitle: { textAlign: 'center', color: Colors.textSecondary },

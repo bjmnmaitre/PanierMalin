@@ -1,294 +1,218 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
-import * as Location from 'expo-location';
-import { MaterialIcons } from '@expo/vector-icons';
-import { colors, spacing, typography } from '@/design';
-import { Card, Input, Button, Badge } from '@/components/primitives';
-import { Header } from '@/components/features';
-import { searchUniversalStores } from '@/services/api';
-import type { UniversalStoreResult } from '@/services/api';
+// ─── ONBOARDING CAROUSEL ─────────────────────────────────────────────────────
+// 3 slides swipables présentant PanierMalin avant l'inscription.
+// Un flag AsyncStorage (@pm/has_seen_onboarding) empêche le ré-affichage.
 
-export interface UniversalSearchScreenProps {
-  onBack: () => void;
+import React, { useRef, useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Dimensions, ListRenderItem, StatusBar,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Logo from '../components/primitives/Logo';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+export const ONBOARDING_KEY = '@pm/has_seen_onboarding';
+
+// ─── Données des slides ───────────────────────────────────────────────────────
+
+interface Slide {
+  key:       string;
+  icon:      string;
+  useLogo:   boolean;
+  accent:    string;
+  bgAccent:  string;
+  tagline:   string;
+  title:     string;
+  subtitle:  string;
 }
 
-const FALLBACK_REGION = {
-  latitude: 46.1601,
-  longitude: -1.1511,
-};
+const SLIDES: Slide[] = [
+  {
+    key: 'repere', icon: 'location-on', useLogo: true,
+    accent: '#FF6B00', bgAccent: '#FFF3E8',
+    tagline: '01 · REPÈRE',
+    title: 'Trouve les meilleures\npromos près de chez toi',
+    subtitle:
+      'Découvre les bons plans signalés par la Commu en Charente-Maritime et partout en France. Le flux en temps réel, tu ne rates plus rien.',
+  },
+  {
+    key: 'partage', icon: 'camera-alt', useLogo: false,
+    accent: '#10B981', bgAccent: '#ECFDF5',
+    tagline: '02 · PARTAGE',
+    title: 'Prends les rayons en photo\net deviens Sentinelle',
+    subtitle:
+      "Chaque photo d'une promo que tu partages te rapporte des points. Grimpe les rangs : Éclaireur → Observateur → Expert → Élite.",
+  },
+  {
+    key: 'economise', icon: 'savings', useLogo: false,
+    accent: '#6366F1', bgAccent: '#EEF2FF',
+    tagline: '03 · ÉCONOMISE',
+    title: 'Suis tes économies et\nregarde ta cagnotte grimper',
+    subtitle:
+      'Valide tes achats après chaque course. PanierMalin calcule exactement ce que tu as gagné en comparant les prix normaux aux prix promos.',
+  },
+];
 
-const SUGGESTED_KEYWORDS = ['Boulangerie', 'Pharmacie', 'Quincaillerie', 'CBD', 'Artisan', 'Fleuriste'];
+// ─── Composant slide ──────────────────────────────────────────────────────────
 
-export default function UniversalSearchScreen({ onBack }: UniversalSearchScreenProps) {
-  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [isLocating, setIsLocating] = useState(true);
-  const [locationDenied, setLocationDenied] = useState(false);
+function SlideView({ slide, width }: { slide: Slide; width: number }) {
+  return (
+    <View style={[slideStyles.container, { width }]}>
+      <View style={[slideStyles.illustrationBox, { backgroundColor: slide.bgAccent }]}>
+        {slide.useLogo ? (
+          <Logo size={90} />
+        ) : (
+          <View style={[slideStyles.iconCircle, { backgroundColor: slide.accent }]}>
+            <MaterialIcons name={slide.icon as any} size={52} color="#FFFFFF" />
+          </View>
+        )}
+        <View style={[slideStyles.orbit,      { borderColor: slide.accent + '33' }]} />
+        <View style={[slideStyles.orbitSmall, { borderColor: slide.accent + '22' }]} />
+      </View>
+      <View style={slideStyles.content}>
+        <Text style={[slideStyles.tagline, { color: slide.accent }]}>{slide.tagline}</Text>
+        <Text style={slideStyles.title}>{slide.title}</Text>
+        <Text style={slideStyles.subtitle}>{slide.subtitle}</Text>
+      </View>
+    </View>
+  );
+}
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<UniversalStoreResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [itineraryIds, setItineraryIds] = useState<string[]>([]);
+const slideStyles = StyleSheet.create({
+  container: { flex: 1 },
+  illustrationBox: {
+    height: 300, alignItems: 'center', justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 110, height: 110, borderRadius: 55,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 16, elevation: 12,
+  },
+  orbit: {
+    position: 'absolute', width: 190, height: 190,
+    borderRadius: 95, borderWidth: 1,
+  },
+  orbitSmall: {
+    position: 'absolute', width: 250, height: 250,
+    borderRadius: 125, borderWidth: 1,
+  },
+  content: { paddingHorizontal: 28, paddingTop: 32 },
+  tagline: { fontSize: 11, fontWeight: '800', letterSpacing: 2, marginBottom: 10 },
+  title: { fontSize: 24, fontWeight: '900', color: '#111827', lineHeight: 32, marginBottom: 14 },
+  subtitle: { fontSize: 15, color: '#6B7280', lineHeight: 24 },
+});
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setLocationDenied(true);
-          setUserCoords(FALLBACK_REGION);
-          return;
-        }
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-      } catch (error) {
-        console.warn('[UniversalSearchScreen] Géolocalisation indisponible, repli sur la position par défaut', error);
-        setUserCoords(FALLBACK_REGION);
-      } finally {
-        setIsLocating(false);
-      }
-    })();
-  }, []);
+// ─── Écran onboarding ─────────────────────────────────────────────────────────
 
-  const runSearch = async (keyword: string) => {
-    const trimmed = keyword.trim();
-    if (!trimmed || !userCoords || isSearching) return;
+export default function OnboardingScreen() {
+  const router   = useRouter();
+  const insets   = useSafeAreaInsets();
+  const listRef  = useRef<FlatList<Slide>>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-    setIsSearching(true);
-    setSearchError(null);
-    setHasSearched(true);
+  const isLast      = activeIndex === SLIDES.length - 1;
+  const activeSlide = SLIDES[activeIndex];
 
-    try {
-      const data = await searchUniversalStores(trimmed, userCoords.latitude, userCoords.longitude);
-      setResults(data);
-    } catch (error) {
-      console.error('[UniversalSearchScreen] Recherche échouée', error);
-      setSearchError("La recherche a échoué. Réessaie dans un instant.");
-      setResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  const finish = useCallback(async () => {
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    router.replace('/(auth)/welcome');
+  }, [router]);
 
-  const handleSuggestedKeyword = (keyword: string) => {
-    setSearchQuery(keyword);
-    runSearch(keyword);
-  };
+  const handleNext = useCallback(() => {
+    if (isLast) { void finish(); return; }
+    const next = activeIndex + 1;
+    listRef.current?.scrollToIndex({ index: next, animated: true });
+    setActiveIndex(next);
+  }, [isLast, activeIndex, finish]);
 
-  const toggleItinerary = (id: string) => {
-    setItineraryIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
-  };
+  const renderItem: ListRenderItem<Slide> = useCallback(
+    ({ item }) => <SlideView slide={item} width={SCREEN_WIDTH} />,
+    []
+  );
 
   return (
-    <View style={styles.root}>
-      <Header
-        title="Recherche universelle"
-        subtitle={itineraryIds.length > 0 ? `${itineraryIds.length} commerce(s) dans l'itinéraire` : undefined}
-        onBackPress={onBack}
+    <View style={[styles.root, { backgroundColor: activeSlide.bgAccent }]}>
+      <StatusBar barStyle="dark-content" />
+
+      {!isLast && (
+        <TouchableOpacity
+          style={[styles.skipBtn, { top: insets.top + 12 }]}
+          onPress={() => void finish()}
+          hitSlop={12}
+        >
+          <Text style={styles.skipText}>Passer</Text>
+        </TouchableOpacity>
+      )}
+
+      <FlatList
+        ref={listRef}
+        data={SLIDES}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.key}
+        horizontal pagingEnabled bounces={false}
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          setActiveIndex(idx);
+        }}
+        style={{ flex: 1 }}
+        getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Input
-          leftIcon="search"
-          rightIcon={searchQuery ? 'close' : undefined}
-          onRightIconPress={() => setSearchQuery('')}
-          placeholder="Boulangerie, quincaillerie, CBD, artisan..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-
-        <Button
-          label="Rechercher"
-          variant="primary"
-          icon="travel-explore"
-          onPress={() => runSearch(searchQuery)}
-          loading={isSearching}
-          disabled={!searchQuery.trim() || !userCoords}
-          fullWidth
-          style={styles.searchButton}
-        />
-
-        <View style={styles.suggestedRow}>
-          {SUGGESTED_KEYWORDS.map((keyword) => (
-            <Pressable key={keyword} onPress={() => handleSuggestedKeyword(keyword)}>
-              <Badge label={keyword} variant="info" />
-            </Pressable>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
+        <View style={styles.dotsRow}>
+          {SLIDES.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                { width: i === activeIndex ? 24 : 8,
+                  backgroundColor: i === activeIndex ? activeSlide.accent : '#D1D5DB' },
+              ]}
+            />
           ))}
         </View>
 
-        {isLocating && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.stateText}>Localisation en cours...</Text>
-          </Card>
-        )}
-
-        {!isLocating && locationDenied && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="gps-not-fixed" size={28} color={colors.text.tertiary} />
-            <Text style={styles.stateText}>
-              Localisation refusée. Active-la dans les réglages pour trouver les commerces autour de toi.
-            </Text>
-          </Card>
-        )}
-
-        {!isLocating && !hasSearched && !locationDenied && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="storefront" size={28} color={colors.text.tertiary} />
-            <Text style={styles.stateText}>
-              Cherche n'importe quel type de commerce autour de toi, pas seulement les supermarchés.
-            </Text>
-          </Card>
-        )}
-
-        {isSearching && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.stateText}>Recherche en cours...</Text>
-          </Card>
-        )}
-
-        {searchError && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="warning" size={28} color={colors.error} />
-            <Text style={styles.stateText}>{searchError}</Text>
-          </Card>
-        )}
-
-        {!isSearching && hasSearched && !searchError && results.length === 0 && (
-          <Card padding="lg" shadow="sm" style={styles.stateCard}>
-            <MaterialIcons name="search-off" size={28} color={colors.text.tertiary} />
-            <Text style={styles.stateText}>Aucun commerce trouvé pour "{searchQuery}" à proximité.</Text>
-          </Card>
-        )}
-
-        {!isSearching &&
-          results.map((store) => {
-            const inItinerary = itineraryIds.includes(store.id);
-
-            return (
-              <Card key={store.id} padding="md" shadow="sm" style={styles.resultCard}>
-                <View style={styles.resultHeaderRow}>
-                  <View style={styles.resultTitleBlock}>
-                    <Text style={styles.resultName}>{store.name}</Text>
-                    <Badge label={store.category} variant="info" style={styles.categoryBadge} />
-                  </View>
-                  <Text style={styles.resultDistance}>{store.distanceKm.toFixed(1)} km</Text>
-                </View>
-
-                {store.address.length > 0 && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="place" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.address}</Text>
-                  </View>
-                )}
-
-                {store.hours && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="schedule" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.hours}</Text>
-                  </View>
-                )}
-
-                {store.phone && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="phone" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText}>{store.phone}</Text>
-                  </View>
-                )}
-
-                {store.website && (
-                  <View style={styles.infoRow}>
-                    <MaterialIcons name="public" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.infoText} numberOfLines={1}>{store.website}</Text>
-                  </View>
-                )}
-
-                <Button
-                  label={inItinerary ? "Ajouté à l'itinéraire" : "Ajouter à l'itinéraire"}
-                  variant={inItinerary ? 'outline' : 'primary'}
-                  icon={inItinerary ? 'done' : 'add-road'}
-                  onPress={() => toggleItinerary(store.id)}
-                  fullWidth
-                  style={styles.itineraryButton}
-                />
-              </Card>
-            );
-          })}
-
-        <View style={{ height: 80 }} />
-      </ScrollView>
+        <TouchableOpacity
+          style={[styles.cta, { backgroundColor: activeSlide.accent }]}
+          onPress={handleNext}
+          activeOpacity={0.88}
+        >
+          <Text style={styles.ctaText}>{isLast ? 'Commencer !' : 'Suivant'}</Text>
+          <MaterialIcons
+            name={isLast ? 'rocket-launch' : 'arrow-forward'}
+            size={18} color="#FFFFFF"
+          />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg.secondary,
+  root: { flex: 1 },
+  skipBtn: {
+    position: 'absolute', right: 20, zIndex: 10,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.06)',
   },
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[8],
+  skipText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  footer: {
+    paddingHorizontal: 28, paddingTop: 20, backgroundColor: '#FFFFFF',
+    gap: 20, borderTopWidth: 1, borderTopColor: '#F3F4F6',
   },
-  searchButton: {
-    marginTop: spacing[3],
+  dotsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  dot: { height: 8, borderRadius: 4 },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 56, borderRadius: 16, gap: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15, shadowRadius: 8, elevation: 6,
   },
-  suggestedRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
-    marginTop: spacing[4],
-    marginBottom: spacing[2],
-  },
-  stateCard: {
-    alignItems: 'center',
-    gap: spacing[2],
-    marginTop: spacing[3],
-  },
-  stateText: {
-    ...typography.bodyMedium,
-    color: colors.text.secondary,
-    textAlign: 'center',
-  },
-  resultCard: {
-    marginTop: spacing[3],
-    gap: spacing[2],
-  },
-  resultHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing[2],
-  },
-  resultTitleBlock: {
-    flex: 1,
-    gap: spacing[1],
-  },
-  resultName: {
-    ...typography.h4,
-    color: colors.text.primary,
-  },
-  categoryBadge: {
-    alignSelf: 'flex-start',
-  },
-  resultDistance: {
-    ...typography.labelMedium,
-    color: colors.primary,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  infoText: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-    flex: 1,
-  },
-  itineraryButton: {
-    marginTop: spacing[2],
-  },
+  ctaText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
 });

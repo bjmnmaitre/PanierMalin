@@ -5,5 +5,12 @@ import UniversalSearchScreen from '@/screens/UniversalSearchScreen';
 export default function SearchRoute() {
   const router = useRouter();
 
-  return <UniversalSearchScreen onBack={() => router.back()} />;
+  return (
+    <UniversalSearchScreen
+      onBack={() => router.back()}
+      onSelectProduct={(ean: string) =>
+        router.push({ pathname: '/product/[ean]', params: { ean } })
+      }
+    />
+  );
 }

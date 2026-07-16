@@ -1,56 +1,29 @@
 // utils/haptics.ts
-// Haptic feedback utilities for consistent touch feedback across the app
-// These are no-op functions since expo-haptics is not installed
-// They can be replaced with actual haptic feedback when needed
+// Wrappers autour d'expo-haptics pour un retour haptique cohérent dans l'app.
+// Chaque fonction est silencieuse sur les appareils sans moteur haptique.
 
-/**
- * Trigger a light selection haptic feedback (used for button presses, etc.)
- */
-export const triggerSelection = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+import * as Haptics from 'expo-haptics';
 
-/**
- * Trigger a light impact haptic feedback
- */
-export const triggerLight = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerSelection = (): Promise<void> =>
+  Haptics.selectionAsync().catch(() => undefined);
 
-/**
- * Trigger a medium impact haptic feedback
- */
-export const triggerMedium = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerLight = (): Promise<void> =>
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-/**
- * Trigger a heavy impact haptic feedback
- */
-export const triggerHeavy = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerMedium = (): Promise<void> =>
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 
-/**
- * Trigger a success notification haptic feedback
- */
-export const triggerSuccess = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerHeavy = (): Promise<void> =>
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
 
-/**
- * Trigger a warning notification haptic feedback
- */
-export const triggerWarning = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerSuccess = (): Promise<void> =>
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
 
-/**
- * Trigger an error notification haptic feedback
- */
-export const triggerError = async (): Promise<void> => {
-  // No-op - haptics not available
-};
+export const triggerWarning = (): Promise<void> =>
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+
+export const triggerError = (): Promise<void> =>
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
 
 export default {
   triggerSelection,

@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { Typography, Radii, Shadows } from '../../theme/typography';
+import Logo from '@/components/primitives/Logo';
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -13,7 +14,9 @@ export default function WelcomeScreen() {
       <View style={[styles.blob, styles.blobTop]} />
       <View style={[styles.blob, styles.blobBottom]} />
 
-      <Text style={[Typography.h1, styles.brand]}>Panier Malin</Text>
+      <View style={styles.brand}>
+        <Logo variant="full" size={48} />
+      </View>
 
       <View style={styles.heroWrap}>
         <Image
@@ -113,7 +116,7 @@ const styles = StyleSheet.create({
     bottom: -80,
     right: -100,
   },
-  brand: { textAlign: 'center', color: Colors.primary, marginBottom: 16 },
+  brand: { alignItems: 'center', marginBottom: 16 },
   heroWrap: { alignItems: 'center', marginBottom: 24 },
   heroImage: {
     width: '100%',

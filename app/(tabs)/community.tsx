@@ -13,6 +13,7 @@ export default function CommunityRoute() {
       onNavigate={(tab: TabKey) => router.replace(TAB_ROUTES[tab] as any)}
       onOpenLeaderboard={() => router.push('/community/leaderboard')}
       onInviteFriends={() => router.push('/community/invite')}
+      onSharePromo={() => router.push('/share-promo')}
     />
   );
 }

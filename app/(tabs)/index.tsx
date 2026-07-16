@@ -1,16 +1,28 @@
+// app/(tabs)/index.tsx
+//
+// Route de l'écran central "Je cherche..." (onglet 3/5, affiché par défaut
+// à l'ouverture de l'app après connexion). Fusionne recherche + carte.
+
 import React from 'react';
 import { useRouter } from 'expo-router';
-import HomePlaceholderScreen from '../../screens/HomePlaceholderScreen';
-import { type TabKey } from '../../components/features/ModernBottomNav';
+import SearchMapScreen from '../../screens/SearchMapScreen';
+import { TabKey } from '../../components/BottomNav';
 import { TAB_ROUTES } from '../../utils/_navHelpers';
 
-export default function HomeRoute() {
+export default function SearchRoute() {
   const router = useRouter();
 
   return (
-    <HomePlaceholderScreen
+    <SearchMapScreen
       onNavigate={(tab: TabKey) => router.replace(TAB_ROUTES[tab] as any)}
-      onOptimize={() => router.push('/optimize')}
+      onScan={() => router.push('/scanner')}
+      onSearchPress={() => router.push('/search')}
+      onProductFound={(ean: string) => {
+        router.push({
+          pathname: '/product/[ean]',
+          params: { ean },
+        });
+      }}
     />
   );
 }

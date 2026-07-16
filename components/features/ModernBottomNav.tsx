@@ -1,15 +1,14 @@
 // components/features/ModernBottomNav.tsx
-// Modern bottom tab navigation bar with icons and active state
-// Exports TabKey properly for use across the app
+// Modern bottom tab navigation bar - 5 equal squares, active tab subtly emphasized
 
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useRef, useCallback } from 'react';
+import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing, typography, shadows } from '@/design';
+import { colors, spacing, typography, shadows, radii } from '@/design';
 import { triggerSelection } from '@/utils/haptics';
 
-export type TabKey = 'home' | 'scanner' | 'map' | 'lists' | 'community' | 'profile';
+export type TabKey = 'immanquables' | 'lists' | 'search' | 'community' | 'profile';
 
 interface TabConfig {
   key: TabKey;
@@ -19,29 +18,84 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { key: 'home', label: 'Accueil', icon: 'home', iconActive: 'home' },
-  { key: 'scanner', label: 'Scanner', icon: 'qr-code-scanner', iconActive: 'qr-code-scanner' },
-  { key: 'map', label: 'Carte', icon: 'map', iconActive: 'map' },
+  { key: 'immanquables', label: 'Immanq.', icon: 'local-fire-department', iconActive: 'local-fire-department' },
   { key: 'lists', label: 'Listes', icon: 'list-alt', iconActive: 'list-alt' },
-  { key: 'community', label: 'Communauté', icon: 'people-outline', iconActive: 'people' },
+  { key: 'search', label: 'Cherche', icon: 'search', iconActive: 'search' },
+  { key: 'community', label: 'Commu.', icon: 'people-outline', iconActive: 'people' },
   { key: 'profile', label: 'Profil', icon: 'person-outline', iconActive: 'person' },
 ];
 
 export interface ModernBottomNavProps {
   active: TabKey;
   onNavigate: (tab: TabKey) => void;
+  showLabels?: boolean;
   testID?: string;
 }
 
+// ── Onglet individuel avec spring élastique ───────────────────────────────────
+
+function TabButton({
+  tab, isActive, onPress, showLabels,
+}: {
+  tab: TabConfig;
+  isActive: boolean;
+  onPress: () => void;
+  showLabels: boolean;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePress = useCallback(() => {
+    Animated.sequence([
+      Animated.spring(scale, {
+        toValue: 0.78, speed: 50, bounciness: 0, useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1.00, speed: 16, bounciness: 14, useNativeDriver: true,
+      }),
+    ]).start();
+    onPress();
+  }, [scale, onPress]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={styles.square}
+      accessible
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isActive }}
+      accessibilityLabel={tab.label}
+      hitSlop={4}
+    >
+      <Animated.View style={[styles.tabInner, { transform: [{ scale }] }]}>
+        <View style={[styles.iconBox, isActive && styles.iconBoxActive]}>
+          <MaterialIcons
+            name={isActive ? tab.iconActive : tab.icon}
+            size={22}
+            color={isActive ? colors.primary : colors.text.tertiary}
+          />
+        </View>
+        {showLabels && (
+          <Text style={[styles.label, isActive && styles.labelActive]} numberOfLines={1}>
+            {tab.label}
+          </Text>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 /**
- * Modern Bottom Navigation Bar
+ * Bottom Navigation Bar - 5 equal-width squares.
+ * The active tab is subtly emphasized (tinted background + raised icon)
+ * without changing its size relative to the others.
  *
  * @example
- * <ModernBottomNav active="home" onNavigate={(tab) => router.push(`/${tab}`)} />
+ * <ModernBottomNav active="search" onNavigate={(tab) => router.push(`/${tab}`)} />
  */
 const ModernBottomNav = React.memo(function ModernBottomNav({
   active,
   onNavigate,
+  showLabels = true,
   testID,
 }: ModernBottomNavProps) {
 
@@ -64,34 +118,15 @@ const ModernBottomNav = React.memo(function ModernBottomNav({
       ]}
       testID={testID}
     >
-      {TABS.map(tab => {
-        const isActive = tab.key === active;
-
-        return (
-          <Pressable
-            key={tab.key}
-            onPress={() => handlePress(tab.key)}
-            style={styles.tabButton}
-            accessible
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={tab.label}
-            hitSlop={4}
-          >
-            {isActive && <View style={styles.activeIndicator} />}
-
-            <MaterialIcons
-              name={isActive ? tab.iconActive : tab.icon}
-              size={24}
-              color={isActive ? colors.primary : colors.text.tertiary}
-            />
-
-            <Text style={[styles.label, isActive && styles.labelActive]} numberOfLines={1}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {TABS.map(tab => (
+        <TabButton
+          key={tab.key}
+          tab={tab}
+          isActive={tab.key === active}
+          onPress={() => { void handlePress(tab.key); }}
+          showLabels={showLabels}
+        />
+      ))}
     </View>
   );
 });
@@ -109,21 +144,29 @@ const styles = StyleSheet.create({
     ...shadows.lg,
   },
 
-  tabButton: {
+  square: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: spacing[1],
-    position: 'relative',
   },
 
-  activeIndicator: {
-    position: 'absolute',
-    top: -spacing[2],
-    width: 32,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
+  tabInner: {
+    alignItems: 'center',
+  },
+
+  // Neutral icon container - same size whether active or not
+  iconBox: {
+    width: 40,
+    height: 32,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Active state: subtle tint background only - no size change
+  iconBoxActive: {
+    backgroundColor: colors.primary_light,
   },
 
   label: {

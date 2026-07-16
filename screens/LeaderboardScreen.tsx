@@ -1,4 +1,3 @@
-// screens/LeaderboardScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -15,6 +14,7 @@ import { Typography, Radii, Shadows } from '../theme/typography';
 import BottomNav, { TabKey } from '../components/BottomNav';
 import { getLeaderboard } from '../services/api';
 import { LeaderboardEntry } from '../types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type FilterTab = 'friends' | 'city' | 'france';
 
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<FilterTab>('friends');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +44,6 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
   }, [activeTab]);
 
   const podium = entries.filter((e) => e.rank <= 3).sort((a, b) => a.rank - b.rank);
-  // Réordonné pour l'affichage du podium : 2e à gauche, 1er au centre, 3e à droite.
   const podiumOrdered = [
     podium.find((p) => p.rank === 2),
     podium.find((p) => p.rank === 1),
@@ -53,8 +53,8 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity onPress={onBack} hitSlop={8}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.primary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -65,7 +65,6 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Filter tabs */}
         <View style={styles.tabsRow}>
           {([
             { key: 'friends', label: 'Mes amis' },
@@ -89,34 +88,10 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
           ))}
         </View>
 
-        {/* Défi de la semaine */}
-        <View style={styles.challengeCard}>
-          <View style={styles.challengeHeaderRow}>
-            <View style={styles.challengeTitleRow}>
-              <MaterialIcons name="local-fire-department" size={20} color={Colors.secondary} />
-              <Text style={Typography.h2}>Défi de la semaine</Text>
-            </View>
-            <View style={styles.rewardBadge}>
-              <Text style={[Typography.labelSm, { color: Colors.secondary, textTransform: 'none' }]}>
-                +50 pts
-              </Text>
-            </View>
-          </View>
-          <Text style={[Typography.bodyMd, { marginTop: 8 }]}>Confirme 3 prix cette semaine</Text>
-          <View style={styles.progressRow}>
-            <Text style={[Typography.caption, { color: Colors.secondary }]}>2/3 confirmés</Text>
-            <Text style={Typography.caption}>66%</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: '66%', backgroundColor: Colors.secondary }]} />
-          </View>
-        </View>
-
         {loading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
         ) : (
         <>
-        {/* Podium */}
         <View style={styles.podiumRow}>
           {podiumOrdered.map((p) => (
             <View key={p.rank} style={styles.podiumItem}>
@@ -162,12 +137,12 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
           ))}
         </View>
 
-        {/* Liste de classement */}
         <View style={styles.rankListCard}>
           <View style={styles.rankListHeader}>
             <Text style={[Typography.labelSm, { width: 32 }]}>#</Text>
             <Text style={[Typography.labelSm, { flex: 1 }]}>UTILISATEUR</Text>
-            <Text style={Typography.labelSm}>ÉCONOMIES</Text>
+            <Text style={[Typography.labelSm, { width: 52, textAlign: 'right' }]}>PROMOS</Text>
+            <Text style={[Typography.labelSm, { width: 72, textAlign: 'right' }]}>ÉCON.</Text>
           </View>
           {rankList.map((row) => (
             <View
@@ -179,11 +154,16 @@ export default function LeaderboardScreen({ onNavigate, onBack }: Props) {
               </Text>
               <View style={styles.rankUserCell}>
                 <Image source={{ uri: row.avatarUri }} style={styles.rankAvatar} />
-                <Text style={[Typography.bodyMd, row.isMe && { fontFamily: 'Inter_600SemiBold', color: Colors.primary }]}>
+                <Text style={[Typography.bodyMd, row.isMe && { fontFamily: 'Inter_600SemiBold', color: Colors.primary }]} numberOfLines={1}>
                   {row.name}
                 </Text>
               </View>
-              <Text style={[Typography.bodyLg, row.isMe && { color: Colors.primary }]}>{formatSavings(row.savings ?? row.totalSavings ?? 0)}</Text>
+              <Text style={[Typography.bodyMd, { width: 52, textAlign: 'right', color: Colors.textSecondary }]}>
+                {row.contributionCount ?? 0}
+              </Text>
+              <Text style={[Typography.bodyLg, { width: 72, textAlign: 'right' }, row.isMe && { color: Colors.primary }]}>
+                {formatSavings(row.savings ?? row.totalSavings ?? 0)}
+              </Text>
             </View>
           ))}
         </View>
@@ -203,7 +183,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 56,
+    minHeight: 56,
     backgroundColor: Colors.surface,
   },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -217,24 +197,6 @@ const styles = StyleSheet.create({
   },
   tabButton: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 10 },
   tabButtonActive: { backgroundColor: Colors.surface, ...Shadows.soft },
-  challengeCard: {
-    backgroundColor: Colors.secondaryLight,
-    borderRadius: Radii.card,
-    padding: 16,
-    marginBottom: 24,
-    ...Shadows.soft,
-  },
-  challengeHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  challengeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  rewardBadge: {
-    backgroundColor: '#FFDBD0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, marginBottom: 4 },
-  progressTrack: { height: 8, backgroundColor: Colors.surface, borderRadius: 999, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 999 },
   podiumRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', gap: 8, marginBottom: 24, marginTop: 8 },
   podiumItem: { flex: 1, alignItems: 'center' },
   podiumAvatarWrap: { marginBottom: 8 },

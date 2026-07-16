@@ -1,34 +1,25 @@
 // screens/ScannerPlaceholderScreen.tsx
 //
-// Écran Scanner (onglet "scanner"). Le nom du fichier garde historiquement
-// "Placeholder" (comme screens/HomePlaceholderScreen.tsx) pour ne pas casser
-// les imports existants, mais l'écran n'est plus un simple message
-// "bientôt disponible" : le vrai scanner caméra (components/ScannerView.tsx,
-// déjà construit mais jamais branché) est maintenant relié à la recherche
-// produit réelle (getProductByEan, via la route app/product/[ean].tsx).
-//
-// RÈGLE DE TRAITEMENT : fichier intégral et autonome, aucune troncature.
+// Modal de scan (pas un onglet — voir la décision de navigation à 5 onglets).
+// Accessible depuis l'icône caméra sur "Je cherche...". Intègre le vrai
+// composant caméra ScannerView pour la détection de code-barres.
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '@/design';
-import ModernBottomNav, { type TabKey } from '@/components/features/ModernBottomNav';
 import ScannerView from '@/components/ScannerView';
 
 export interface ScannerPlaceholderScreenProps {
-  /** Navigation vers un autre onglet (barre de navigation) */
-  onNavigate: (tab: TabKey) => void;
-  /** Appelé avec le code EAN dès qu'un code-barres est reconnu par la caméra */
+  onClose: () => void;
   onProductScanned: (ean: string) => void;
-  /** Raccourci de démonstration (aucune caméra requise) */
   onViewDemoProduct?: () => void;
 }
 
 type ScreenMode = 'idle' | 'scanning';
 
-export default function ScannerPlaceholderScreen({ onNavigate, onProductScanned, onViewDemoProduct }: ScannerPlaceholderScreenProps) {
+export default function ScannerPlaceholderScreen({ onClose, onProductScanned, onViewDemoProduct }: ScannerPlaceholderScreenProps) {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<ScreenMode>('idle');
 
@@ -46,6 +37,10 @@ export default function ScannerPlaceholderScreen({ onNavigate, onProductScanned,
 
   return (
     <View style={styles.container}>
+      <Pressable style={[styles.closeButton, { top: insets.top + spacing[2] }]} onPress={onClose} hitSlop={8}>
+        <MaterialIcons name="close" size={26} color={colors.text.primary} />
+      </Pressable>
+
       <View style={[styles.content, { paddingTop: insets.top + spacing[6] }]}>
         <View style={styles.iconContainer}>
           <MaterialIcons name="qr-code-scanner" size={40} color={colors.primary} />
@@ -74,8 +69,6 @@ export default function ScannerPlaceholderScreen({ onNavigate, onProductScanned,
           </Pressable>
         )}
       </View>
-
-      <ModernBottomNav active="scanner" onNavigate={onNavigate} />
     </View>
   );
 }
@@ -84,6 +77,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg.secondary,
+  },
+  closeButton: {
+    position: 'absolute',
+    right: spacing[4],
+    zIndex: 10,
+    padding: spacing[1],
   },
   content: {
     flex: 1,

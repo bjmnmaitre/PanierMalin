@@ -163,7 +163,7 @@ export default function LiveMapScreen({ onNavigate }: Props) {
         <MaterialIcons name="my-location" size={22} color={Colors.textPrimary} />
       </TouchableOpacity>
 
-      <BottomNav active="scanner" onNavigate={onNavigate} />
+      <BottomNav active="search" onNavigate={onNavigate} />
     </View>
   );
 }

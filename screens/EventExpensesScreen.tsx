@@ -1,4 +1,3 @@
-// screens/EventExpensesScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -73,7 +72,6 @@ export default function EventExpensesScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Participants */}
         <Text style={[Typography.labelSm, { marginBottom: 12 }]}>{event.participants.length} PARTICIPANTS</Text>
         <View style={styles.participantsRow}>
           <View style={styles.avatarStack}>
@@ -93,7 +91,6 @@ export default function EventExpensesScreen({
           </TouchableOpacity>
         </View>
 
-        {/* Liste d'articles partagés */}
         <View style={{ gap: 10, marginBottom: 24 }}>
           {event.items.map((item) => (
             <View key={item.id} style={styles.itemCard}>
@@ -139,7 +136,6 @@ export default function EventExpensesScreen({
           ))}
         </View>
 
-        {/* Bilan global */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeaderRow}>
             <View style={styles.summaryIconCircle}>

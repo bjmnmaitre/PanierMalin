@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../theme/colors';
 import { Typography, Radii, Shadows } from '../../theme/typography';
+import Logo from '@/components/primitives/Logo';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function SignUpScreen() {
 
       if (userData?.user) {
         await withTimeout(
-          supabase
+          await supabase
             .from('users_profiles')
             .update({ display_name: name.trim() })
             .eq('id', userData.user.id),
@@ -92,8 +93,7 @@ export default function SignUpScreen() {
         </TouchableOpacity>
 
         <View style={styles.brandRow}>
-          <Ionicons name="basket" size={20} color={Colors.primary} />
-          <Text style={[Typography.h2, { color: Colors.primary }]}>Panier Malin</Text>
+          <Logo variant="full" size={36} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
